@@ -156,9 +156,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         vm.startPrank(campaignCreator);
 
         // Climate Action Campaign
-        campaignRegistry.submitCampaign{
-            value: 0.005 ether
-        }(
+        campaignRegistry.submitCampaign{value: 0.005 ether}(
             CampaignRegistry.CampaignInput({
                 id: campaignClimateId,
                 payoutRecipient: ngo1, // Red Cross payout address
@@ -173,9 +171,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         );
 
         // Education Fund Campaign
-        campaignRegistry.submitCampaign{
-            value: 0.005 ether
-        }(
+        campaignRegistry.submitCampaign{value: 0.005 ether}(
             CampaignRegistry.CampaignInput({
                 id: campaignEducationId,
                 payoutRecipient: ngo2, // UNICEF payout address
@@ -190,9 +186,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         );
 
         // Medical Aid Campaign
-        campaignRegistry.submitCampaign{
-            value: 0.005 ether
-        }(
+        campaignRegistry.submitCampaign{value: 0.005 ether}(
             CampaignRegistry.CampaignInput({
                 id: campaignMedicalId,
                 payoutRecipient: donor1, // Save the Children payout address

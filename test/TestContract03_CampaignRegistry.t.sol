@@ -192,9 +192,7 @@ contract TestContract03_CampaignRegistry is Test {
         vm.expectEmit(true, true, false, true);
         emit CampaignSubmitted(CAMPAIGN_ID_1, proposer, METADATA_HASH, METADATA_CID, MIN_DEPOSIT);
 
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -226,9 +224,7 @@ contract TestContract03_CampaignRegistry is Test {
                 CampaignRegistry.InsufficientSubmissionDeposit.selector, MIN_DEPOSIT, MIN_DEPOSIT - 1
             )
         );
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT - 1
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT - 1}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -248,9 +244,7 @@ contract TestContract03_CampaignRegistry is Test {
      */
     function test_Contract03_Case05_cannotSubmitDuplicateCampaign() public {
         vm.startPrank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -265,9 +259,7 @@ contract TestContract03_CampaignRegistry is Test {
         );
 
         vm.expectRevert(abi.encodeWithSelector(CampaignRegistry.CampaignAlreadyExists.selector, CAMPAIGN_ID_1));
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -293,9 +285,7 @@ contract TestContract03_CampaignRegistry is Test {
     function test_Contract03_Case06_approveCampaignRefundsDeposit() public {
         // Submit campaign
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -339,9 +329,7 @@ contract TestContract03_CampaignRegistry is Test {
     function test_Contract03_Case07_rejectCampaignSlashesDeposit() public {
         // Submit campaign
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -382,9 +370,7 @@ contract TestContract03_CampaignRegistry is Test {
      */
     function test_Contract03_Case08_cannotApproveNonSubmittedCampaign() public {
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -417,9 +403,7 @@ contract TestContract03_CampaignRegistry is Test {
      */
     function test_Contract03_Case09_cannotRejectApprovedCampaign() public {
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -452,9 +436,7 @@ contract TestContract03_CampaignRegistry is Test {
      */
     function test_Contract03_Case10_unauthorizedCannotApproveCampaign() public {
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -478,9 +460,7 @@ contract TestContract03_CampaignRegistry is Test {
      */
     function test_Contract03_Case11_unauthorizedCannotRejectCampaign() public {
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID_1,
                 payoutRecipient: ngo,
@@ -587,9 +567,7 @@ contract TestContract03_CampaignRegistry is Test {
 
     function _submitCampaign(bytes32 campaignId) private {
         vm.prank(proposer);
-        campaignRegistry.submitCampaign{
-            value: MIN_DEPOSIT
-        }(
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
             CampaignRegistry.CampaignInput({
                 id: campaignId,
                 payoutRecipient: ngo,

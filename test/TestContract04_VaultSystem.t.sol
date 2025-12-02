@@ -133,9 +133,7 @@ contract TestContract04_VaultSystem is Test {
         // Setup campaign
         vm.deal(protocolAdmin, 1 ether); // Fund protocolAdmin with ETH for deposit
         vm.prank(protocolAdmin);
-        campaignRegistry.submitCampaign{
-            value: 0.005 ether
-        }(
+        campaignRegistry.submitCampaign{value: 0.005 ether}(
             CampaignRegistry.CampaignInput({
                 id: CAMPAIGN_ID,
                 payoutRecipient: protocolAdmin,

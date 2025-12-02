@@ -81,9 +81,7 @@ contract AddCampaign is BaseDeployment {
         uint256 submissionDeposit = 0.005 ether;
         console.log("Submission deposit required:", submissionDeposit);
 
-        campaignRegistry.submitCampaign{
-            value: submissionDeposit
-        }(
+        campaignRegistry.submitCampaign{value: submissionDeposit}(
             CampaignRegistry.CampaignInput({
                 id: campaignId,
                 payoutRecipient: payoutRecipient,
