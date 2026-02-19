@@ -626,125 +626,196 @@ forge test --match-path "test/invariant/**" -v
 
 ---
 
-### Phase 5 — Hardhat Fork Tests (JSON-RPC against real Aave V3)
+### Phase 5 — Foundry Fork Tests (against real Aave V3 on Base)
 
-**Claude skill:** none — standard Hardhat/ethers.js
+**Claude skill:** none — standard Foundry fork
 **Directory:** `test/fork/`
 **Purpose:** Validate AaveAdapter against real Aave V3 state, gas profiling at real scale,
-and JSON-RPC connection validation.
+and fork sanity checks. All Solidity — no Hardhat, no TypeScript, no second toolchain.
 
-**Install dependencies:**
+**Setup — install Aave V3 interfaces:**
 
 ```bash
-pnpm add -D hardhat @nomicfoundation/hardhat-toolbox @nomicfoundation/hardhat-ethers ethers
-pnpm add -D @aave/core-v3  # for typed interfaces
+forge install aave/aave-v3-core --no-commit
 ```
 
-**`hardhat.config.ts`**
+Add to `foundry.toml` remappings:
+```toml
+"@aave/core-v3/=lib/aave-v3-core/"
+```
 
-```typescript
-import { HardhatUserConfig } from "hardhat/config";
-import "@nomicfoundation/hardhat-toolbox";
-
-const config: HardhatUserConfig = {
-  solidity: {
-    version: "0.8.26",
-    settings: { optimizer: { enabled: true, runs: 200 }, viaIR: true },
-  },
-  networks: {
-    hardhat: {
-      forking: {
-        url: process.env.BASE_RPC_URL!, // Base mainnet — Aave V3 deployed
-        blockNumber: undefined, // pin after first run for reproducibility
-        enabled: true,
-      },
-      chainId: 8453,
-    },
-  },
-};
-export default config;
+Add named fork endpoint to `foundry.toml`:
+```toml
+[rpc_endpoints]
+base = "${BASE_RPC_URL}"
 ```
 
 **`.env` (gitignored):**
-
 ```
 BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>
 ```
 
-**Test files:**
-
-**`test/fork/AaveAdapter.fork.ts`** — real Aave V3 on Base
-
-```typescript
-// Addresses: Base mainnet Aave V3
-const AAVE_POOL = "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5";
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const AUSDC = "<aUsdc address from getReserveData>";
-const WHALE = "<USDC whale on Base>";
-
-it("invest: transfers USDC to Aave and receives aUSDC");
-it("totalAssets: equals aToken.balanceOf(adapter)");
-it("harvest: accrues real yield after time.increase(30 days)");
-it("divest: returns correct USDC within slippage bounds");
-it("divest full: totalInvested resets to 0");
-it("emergencyWithdraw: recovers all aUSDC to vault");
-it("isHealthy: returns true on live reserve");
+**Base mainnet addresses (constants shared across fork tests):**
+```solidity
+// test/fork/ForkAddresses.sol
+address constant AAVE_POOL      = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
+address constant AAVE_ORACLE    = 0x2Cc0Fc26eD4563A5ce5e8bdcfe1A2878676Ae156;
+address constant USDC           = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+address constant AUSDC          = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
+address constant USDC_WHALE     = 0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3;
 ```
 
-**`test/fork/GiveVault.fork.ts`** — full vault cycle on real network
+---
 
-```typescript
-it(
-  "full cycle: deposit → invest → 30-day yield → harvest → distribute → withdraw",
-);
-// assert: donor principal intact after withdrawal (±slippage)
-// assert: NGO received nonzero USDC
+**`test/fork/ForkBase.t.sol`** — shared setup inherited by all fork tests
 
-it("share price: nondecreasing after 90-day yield accrual");
+```solidity
+contract ForkBase is Test {
+    uint256 internal fork;
 
-it("emergency: pause + emergencyWithdraw from real Aave within same block");
+    function setUp() public virtual {
+        fork = vm.createFork("base");  // uses [rpc_endpoints] base from foundry.toml
+        vm.selectFork(fork);
+    }
 
-it("totalAssets: matches actual on-chain balances before and after harvest");
-```
-
-**`test/fork/PayoutRouter.gas.fork.ts`** — gas profiling (accumulator model)
-
-```typescript
-// recordYield is O(1) regardless of depositor count — verify it stays flat
-const SHAREHOLDER_COUNTS = [10, 50, 100, 200];
-
-for (const n of SHAREHOLDER_COUNTS) {
-  it(`recordYield with ${n} depositors: gas is flat (O(1))`, async () => {
-    // fund n wallets, deposit into vault, call recordYield, measure gas
-    // assert: gas does not grow with n (within ±5% across all counts)
-    // FAIL if gas > 200_000 (should be a single accumulator update + event)
-  });
-
-  it(`claimYield per-user with ${n} total depositors: gas is flat (O(1))`, async () => {
-    // after recordYield, one user calls claimYield — gas must not depend on n
-    // FAIL if gas > 150_000
-  });
+    /// @dev Impersonate the USDC whale and transfer `amount` to `recipient`
+    function _dealUsdc(address recipient, uint256 amount) internal {
+        vm.prank(USDC_WHALE);
+        IERC20(USDC).transfer(recipient, amount);
+    }
 }
-// Note: push-model DoS risk eliminated by Phase 1.6.
-// These tests confirm the O(1) guarantee holds at real Aave state.
-// If gas grows with n, the accumulator implementation has a bug.
 ```
 
-**`test/fork/rpc.connection.ts`** — RPC and fork sanity checks (run first)
+---
 
-```typescript
-it("RPC: can connect to Base mainnet and read latest block");
-it("RPC: Aave V3 pool is deployed at expected address");
-it("RPC: USDC reserve is active and not frozen");
-it("RPC: forked block number is within 1000 blocks of current tip");
-it("RPC: state override (impersonation) works for whale account");
+**`test/fork/ForkSanity.fork.t.sol`** — connection and address sanity checks (run first)
+
+```solidity
+test_fork_connected_to_base_mainnet()
+  assert: block.chainid == 8453
+  assert: block.number > 0
+
+test_aave_pool_deployed_at_expected_address()
+  assert: address(AAVE_POOL).code.length > 0
+
+test_usdc_reserve_active_and_not_frozen()
+  DataTypes.ReserveConfigurationMap memory cfg = AAVE_POOL.getReserveData(USDC).configuration
+  assert: isActive bit set, isFrozen bit clear
+
+test_whale_impersonation_works()
+  _dealUsdc(address(this), 1000e6)
+  assert: IERC20(USDC).balanceOf(address(this)) == 1000e6
 ```
+
+---
+
+**`test/fork/AaveAdapter.fork.t.sol`** — AaveAdapter against live Aave V3
+
+```solidity
+// Deploy AaveAdapter pointing at real AAVE_POOL, wire to a test vault
+
+test_invest_transfers_usdc_to_aave()
+  _dealUsdc(vault, 10_000e6) → vault calls adapter.invest(10_000e6)
+  assert: IERC20(AUSDC).balanceOf(adapter) > 0
+  assert: IERC20(USDC).balanceOf(adapter) == 0
+
+test_total_assets_equals_ausdc_balance()
+  assert: adapter.totalAssets() == IERC20(AUSDC).balanceOf(adapter)
+
+test_harvest_accrues_real_yield_after_30_days()
+  invest(10_000e6) → vm.warp(block.timestamp + 30 days)
+  (profit, loss) = adapter.harvest()
+  assert: profit > 0
+  assert: loss == 0
+
+test_divest_returns_usdc_within_slippage()
+  invest(10_000e6) → divest(5_000e6)
+  assert: received >= 5_000e6 * (10_000 - maxSlippageBps) / 10_000
+
+test_divest_full_resets_total_invested()
+  invest → divest(type(uint256).max)
+  assert: adapter.totalAssets() == 0
+
+test_emergency_withdraw_recovers_all()
+  invest(10_000e6) → emergencyWithdraw()
+  assert: IERC20(USDC).balanceOf(vault) >= 10_000e6 * 99 / 100  // within maxLoss
+
+test_is_healthy_on_live_reserve()
+  assert: adapter.isHealthy() == true
+```
+
+---
+
+**`test/fork/GiveVault.fork.t.sol`** — full vault cycle on Base
+
+```solidity
+test_full_cycle_deposit_invest_harvest_distribute_withdraw()
+  3 donors deposit USDC → setActiveAdapter(aaveAdapter)
+  → _investExcessCash() → vm.warp(+30 days)
+  → harvest() → donors call claimYield() on router
+  → all donors redeem
+  assert: each donor.usdcBalance >= deposit - (deposit * maxLossBps / 10_000)
+  assert: campaignRecipient received nonzero USDC
+
+test_share_price_nondecreasing_after_90_days()
+  priceBefore = vault.previewRedeem(1e6)
+  deposit → warp(+90 days) → harvest()
+  assert: vault.previewRedeem(1e6) >= priceBefore
+
+test_emergency_pause_and_withdraw_within_same_block()
+  invest(50_000e6) → emergencyPause()
+  assert: vault.emergencyShutdown() == true
+  assert: IERC20(USDC).balanceOf(vault) >= invested * 99 / 100  // aUSDC withdrawn
+
+test_total_assets_matches_onchain_balances()
+  assert: vault.totalAssets() == IERC20(USDC).balanceOf(vault) + adapter.totalAssets()
+```
+
+---
+
+**`test/fork/PayoutRouterGas.fork.t.sol`** — O(1) gas flatness validation
+
+```solidity
+// Deploy PayoutRouter + vault + adapter on the fork (no real funds needed)
+// Use vm.deal / MockERC20 for USDC; only Aave integration is real
+
+uint256[4] constant DEPOSITOR_COUNTS = [10, 50, 100, 200];
+
+test_recordYield_gas_is_flat()
+  for each N in DEPOSITOR_COUNTS:
+    setup N depositors with shares
+    uint256 gasBefore = gasleft()
+    router.recordYield(asset, totalYield)
+    uint256 gasUsed = gasBefore - gasleft()
+    assert: gasUsed < 200_000  // single accumulator write + event
+    // emit GasUsed(N, gasUsed) for manual inspection
+
+test_claimYield_gas_independent_of_depositor_count()
+  for each N in DEPOSITOR_COUNTS:
+    setup N depositors, recordYield once
+    uint256 gasBefore = gasleft()
+    router.claimYield(vault, asset)  // one user claims
+    uint256 gasUsed = gasBefore - gasleft()
+    assert: gasUsed < 150_000  // one user's computation only
+```
+
+---
 
 **Run:**
 
 ```bash
-BASE_RPC_URL=$BASE_RPC_URL npx hardhat test test/fork/rpc.connection.ts
-BASE_RPC_URL=$BASE_RPC_URL npx hardhat test test/fork/ --network hardhat
+# Pin block number after first run for reproducibility — add to foundry.toml:
+# [fork]
+# block_number = <BLOCK>  (or pass --fork-block-number <BLOCK>)
+
+# Sanity checks first
+forge test --match-path "test/fork/ForkSanity*" --fork-url $BASE_RPC_URL -v
+
+# Full fork suite
+forge test --match-path "test/fork/**" --fork-url $BASE_RPC_URL -v
+
+# Gas report
+forge test --match-path "test/fork/PayoutRouterGas*" --fork-url $BASE_RPC_URL -v --gas-report
 ```
 
 ---
@@ -883,9 +954,9 @@ forge test --match-path "test/fuzz/**" -v --fuzz-seed 0x1337
 # Phase 4: invariant (requires [invariant] config in foundry.toml)
 forge test --match-path "test/invariant/**" -v
 
-# Phase 5: fork (Hardhat)
-BASE_RPC_URL=$BASE_RPC_URL npx hardhat test test/fork/rpc.connection.ts
-BASE_RPC_URL=$BASE_RPC_URL npx hardhat test test/fork/
+# Phase 5: fork (Foundry — requires BASE_RPC_URL in .env)
+forge test --match-path "test/fork/ForkSanity*" --fork-url $BASE_RPC_URL -v
+forge test --match-path "test/fork/**" --fork-url $BASE_RPC_URL -v
 
 # Phase 6: Tenderly (manual — run scenarios in dashboard or via deploy scripts)
 
