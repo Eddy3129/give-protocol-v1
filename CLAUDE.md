@@ -53,8 +53,13 @@ mandatory gates are green.
   - `distributeToAllUsers` push loop removed from code path
   - `updateUserShares(address user, uint256 newShares)` binds vault to `msg.sender`
   - Full suite green after migration (`forge test -v`: 224/224)
-- ⚠️ Additional planned test suites are missing (`test/unit`, `test/fuzz`, `test/invariant`,
-  `test/fork`).
+- ✅ Phase 2 unit-test gap fill completed:
+  - Added `test/unit/TestContract07_NGORegistry.t.sol`
+  - Added `test/unit/TestContract10_CampaignVaultFactory.t.sol`
+  - Added `test/unit/TestContract11_AdapterKinds.t.sol`
+  - Added `test/unit/TestContract12_ModuleLibraries.t.sol`
+  - Verification: `forge test --match-path "test/unit/**" -v` passes (21/21)
+- ⚠️ Additional planned test suites are still missing (`test/fuzz`, `test/invariant`, `test/fork`).
 
 ### Mandatory Deployment Gates (No Exceptions)
 
@@ -397,6 +402,12 @@ their preferences.
 ---
 
 ### Phase 2 — Foundry Unit Tests (gap fill)
+
+**Status (2026-02-19): ✅ CORE UNIT GAP COMPLETE**
+
+- Added all four missing `test/unit` files listed below.
+- Verified new unit scope with `forge test --match-path "test/unit/**" -v` (21 passed, 0 failed).
+- Remaining work for this phase is optional depth expansion from the edge-case backlog.
 
 **Claude skill:** none required — standard Foundry
 **Run:** `forge test --match-path "test/unit/**" -v`

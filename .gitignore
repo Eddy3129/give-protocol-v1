@@ -18,3 +18,8 @@ node_modules/
 
 # references/
 # llm/
+
+# Static analysis artifacts
+semgrep-report.json
+slither-output*.txt
+slither-report*.json

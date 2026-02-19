@@ -31,7 +31,6 @@ contract PayoutRouter is
     bytes32 public constant ROLE_UPGRADER = keccak256("ROLE_UPGRADER");
 
     uint256 public constant MAX_FEE_BPS = 1_000; // 10%
-    uint256 public constant PROTOCOL_FEE_BPS = 250; // 2.5%
     uint256 private constant PRECISION = 1e18;
 
     /// @notice Minimum delay before fee change takes effect (7 days)
@@ -86,10 +85,11 @@ contract PayoutRouter is
     error InvalidBeneficiary();
     error CampaignMismatch(bytes32 expected, bytes32 provided);
 
-    struct YieldTotals {
-        uint256 campaign;
-        uint256 beneficiary;
-        uint256 protocol;
+    struct AllocationResult {
+        uint256 campaignAmount;
+        uint256 beneficiaryAmount;
+        uint256 protocolAmount;
+        address payoutTo;
     }
 
     // ============================================
@@ -477,34 +477,20 @@ contract PayoutRouter is
             emit StalePrefCleared(user, vault);
         }
 
-        uint256 campaignAmount;
-        uint256 beneficiaryAmount;
-        uint256 protocolAmount;
-        address beneficiary;
-        (campaignAmount, beneficiaryAmount, protocolAmount, beneficiary) =
+        AllocationResult memory allocation =
             _calculateAllocations(s, campaignId, campaign.payoutRecipient, user, vault, userYield);
 
-        IERC20 token = IERC20(asset);
+        _executeAllocationPayouts(s, asset, campaignId, campaign.payoutRecipient, user, vault, allocation);
+        emit YieldClaimed(
+            user,
+            vault,
+            asset,
+            allocation.campaignAmount,
+            allocation.beneficiaryAmount,
+            allocation.protocolAmount
+        );
 
-        if (protocolAmount > 0) {
-            token.safeTransfer(s.protocolTreasury, protocolAmount);
-            s.campaignProtocolFees[campaignId] += protocolAmount;
-        }
-
-        if (campaignAmount > 0) {
-            token.safeTransfer(campaign.payoutRecipient, campaignAmount);
-            s.campaignTotalPayouts[campaignId] += campaignAmount;
-        }
-
-        if (beneficiaryAmount > 0) {
-            token.safeTransfer(beneficiary, beneficiaryAmount);
-            emit BeneficiaryPaid(user, vault, beneficiary, beneficiaryAmount);
-        }
-
-        emit CampaignPayoutExecuted(campaignId, vault, campaign.payoutRecipient, campaignAmount, protocolAmount);
-        emit YieldClaimed(user, vault, asset, campaignAmount, beneficiaryAmount, protocolAmount);
-
-        return campaignAmount + beneficiaryAmount + protocolAmount;
+        return allocation.campaignAmount + allocation.beneficiaryAmount + allocation.protocolAmount;
     }
 
     function emergencyWithdraw(address asset, address recipient, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -527,26 +513,56 @@ contract PayoutRouter is
     )
         private
         view
-        returns (uint256 campaignAmount, uint256 beneficiaryAmount, uint256 protocolAmount, address payoutTo)
+        returns (AllocationResult memory allocation)
     {
-        protocolAmount =
-            (userYield * s.feeBps) / 10_000;
-        uint256 netYield = userYield - protocolAmount;
+        allocation.protocolAmount = (userYield * s.feeBps) / 10_000;
+        uint256 netYield = userYield - allocation.protocolAmount;
 
         GiveTypes.CampaignPreference memory pref = s.userPreferences[user][vault];
         if (pref.campaignId != bytes32(0) && pref.campaignId != campaignId) {
             revert CampaignMismatch(campaignId, pref.campaignId);
         }
 
-        uint8 allocation = pref.allocationPercentage == 0 ? 100 : pref.allocationPercentage;
-        payoutTo = pref.beneficiary == address(0) ? defaultBeneficiary : pref.beneficiary;
+        uint8 allocationPercentage = pref.allocationPercentage == 0 ? 100 : pref.allocationPercentage;
+        allocation.payoutTo = pref.beneficiary == address(0) ? defaultBeneficiary : pref.beneficiary;
 
-        campaignAmount = (netYield * allocation) / 100;
-        beneficiaryAmount = netYield - campaignAmount;
+        allocation.campaignAmount = (netYield * allocationPercentage) / 100;
+        allocation.beneficiaryAmount = netYield - allocation.campaignAmount;
 
-        if (beneficiaryAmount > 0 && payoutTo == address(0)) {
-            payoutTo = s.feeRecipient;
+        if (allocation.beneficiaryAmount > 0 && allocation.payoutTo == address(0)) {
+            allocation.payoutTo = s.feeRecipient;
         }
+    }
+
+    function _executeAllocationPayouts(
+        GiveTypes.PayoutRouterState storage s,
+        address asset,
+        bytes32 campaignId,
+        address campaignRecipient,
+        address user,
+        address vault,
+        AllocationResult memory allocation
+    ) private {
+        IERC20 token = IERC20(asset);
+
+        if (allocation.protocolAmount > 0) {
+            token.safeTransfer(s.protocolTreasury, allocation.protocolAmount);
+            s.campaignProtocolFees[campaignId] += allocation.protocolAmount;
+        }
+
+        if (allocation.campaignAmount > 0) {
+            token.safeTransfer(campaignRecipient, allocation.campaignAmount);
+            s.campaignTotalPayouts[campaignId] += allocation.campaignAmount;
+        }
+
+        if (allocation.beneficiaryAmount > 0) {
+            token.safeTransfer(allocation.payoutTo, allocation.beneficiaryAmount);
+            emit BeneficiaryPaid(user, vault, allocation.payoutTo, allocation.beneficiaryAmount);
+        }
+
+        emit CampaignPayoutExecuted(
+            campaignId, vault, campaignRecipient, allocation.campaignAmount, allocation.protocolAmount
+        );
     }
 
     function _syncUserPendingAcrossAssets(GiveTypes.PayoutRouterState storage s, address vault, address user) private {
