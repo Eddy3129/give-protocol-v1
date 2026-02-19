@@ -8,8 +8,8 @@ broadcast = "broadcast"
 script = "script"
 
 # Solidity configuration
-solc = "0.8.26"
-evm_version = "cancun"
+solc = "0.8.34"
+evm_version = "prague"
 optimizer = false
 via_ir = true
 ffi = false
