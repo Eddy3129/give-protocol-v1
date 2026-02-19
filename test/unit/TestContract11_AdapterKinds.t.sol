@@ -109,4 +109,20 @@ contract TestContract11_AdapterKinds is Test {
         assertEq(currentStart, newStart);
         assertEq(currentMaturity, newMaturity);
     }
+
+    function test_Contract11_Case05_PT_rolloverWithActiveDepositsReverts() public {
+        uint64 start = uint64(block.timestamp);
+        uint64 maturity = uint64(block.timestamp + 30 days);
+        PTAdapter adapter = new PTAdapter(ADAPTER_ID, address(asset), vault, start, maturity);
+
+        vm.prank(vault);
+        asset.transfer(address(adapter), 100 ether);
+
+        vm.prank(vault);
+        adapter.invest(100 ether);
+
+        vm.prank(vault);
+        vm.expectRevert(abi.encodeWithSelector(PTAdapter.ActiveSeriesHasDeposits.selector, 100 ether));
+        adapter.rollover(uint64(block.timestamp + 31 days), uint64(block.timestamp + 61 days));
+    }
 }

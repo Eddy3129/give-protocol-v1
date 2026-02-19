@@ -8,6 +8,7 @@ import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {CompoundingAdapter} from "../../src/adapters/kinds/CompoundingAdapter.sol";
+import {PendleAdapter} from "../../src/adapters/kinds/PendleAdapter.sol";
 import {MockYieldAdapter} from "../../src/mocks/MockYieldAdapter.sol";
 import {MockAavePool} from "../../src/mocks/MockAavePool.sol";
 import {RiskModule} from "../../src/modules/RiskModule.sol";
@@ -55,6 +56,7 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
     MockAavePool public aavePool; // Mock external Aave pool
     AaveAdapter public aaveUsdcAdapter;
     CompoundingAdapter public compoundingDaiAdapter;
+    PendleAdapter public pendleUsdcAdapter;
     MockYieldAdapter public mockUsdcAdapter;
 
     // ============================================================
@@ -72,6 +74,7 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
     bytes32 public daiVaultId;
     bytes32 public aaveUsdcAdapterId;
     bytes32 public compoundingDaiAdapterId;
+    bytes32 public pendleUsdcAdapterId;
     bytes32 public mockUsdcAdapterId;
 
     // ============================================================
@@ -354,6 +357,35 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
             })
         );
 
+        // Pendle USDC Adapter (fixed-maturity token flow)
+        // In this base fixture, market/PT/router are deterministic placeholders since
+        // tests here exercise strategy wiring and adapter approval lifecycle.
+        pendleUsdcAdapterId = keccak256("adapter.pendle.usdc");
+        pendleUsdcAdapter = new PendleAdapter(
+            pendleUsdcAdapterId,
+            address(usdc),
+            address(usdcVault),
+            makeAddr("pendleRouter"),
+            makeAddr("pendleMarket"),
+            makeAddr("pendlePt")
+        );
+
+        emit log_named_address("Pendle USDC Adapter deployed at", address(pendleUsdcAdapter));
+
+        vm.prank(protocolAdmin);
+        protocolCore.configureAdapter(
+            pendleUsdcAdapterId,
+            AdapterModule.AdapterConfigInput({
+                id: pendleUsdcAdapterId,
+                proxy: address(pendleUsdcAdapter),
+                implementation: address(pendleUsdcAdapter),
+                asset: address(usdc),
+                vault: address(usdcVault),
+                kind: GiveTypes.AdapterKind.FixedMaturityToken,
+                metadataHash: keccak256("ipfs://QmPendleAdapter")
+            })
+        );
+
         // ========================================
         // STEP 9: Deploy StrategyManagers
         // ========================================
@@ -409,6 +441,7 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
         // Approve adapters for USDC vault
         usdcVaultManager.setAdapterApproval(address(aaveUsdcAdapter), true);
         usdcVaultManager.setAdapterApproval(address(mockUsdcAdapter), true);
+        usdcVaultManager.setAdapterApproval(address(pendleUsdcAdapter), true);
         usdcVaultManager.setActiveAdapter(address(aaveUsdcAdapter));
 
         // Approve adapter for DAI vault
@@ -463,6 +496,11 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
         assertTrue(address(compoundingDaiAdapter) != address(0), "Compounding DAI Adapter should be deployed");
         assertEq(address(compoundingDaiAdapter.asset()), address(dai), "Compounding adapter asset mismatch");
         assertEq(compoundingDaiAdapter.vault(), address(daiVault), "Compounding adapter vault mismatch");
+
+        // Pendle USDC Adapter
+        assertTrue(address(pendleUsdcAdapter) != address(0), "Pendle USDC Adapter should be deployed");
+        assertEq(address(pendleUsdcAdapter.asset()), address(usdc), "Pendle adapter asset mismatch");
+        assertEq(pendleUsdcAdapter.vault(), address(usdcVault), "Pendle adapter vault mismatch");
     }
 
     /**
@@ -476,6 +514,10 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
         assertTrue(
             usdcVaultManager.approvedAdapters(address(aaveUsdcAdapter)),
             "Aave adapter should be approved for USDC vault"
+        );
+        assertTrue(
+            usdcVaultManager.approvedAdapters(address(pendleUsdcAdapter)),
+            "Pendle adapter should be approved for USDC vault"
         );
         assertEq(address(usdcVault.activeAdapter()), address(aaveUsdcAdapter), "USDC vault active adapter mismatch");
 

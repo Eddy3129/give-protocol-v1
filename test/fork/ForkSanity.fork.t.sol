@@ -44,9 +44,11 @@ contract ForkSanity is ForkBase {
     function test_usdc_reserve_is_active_and_not_frozen() public requiresFork {
         DataTypes.ReserveData memory data = pool.getReserveData(ForkAddresses.USDC);
         DataTypes.ReserveConfigurationMap memory cfg = data.configuration;
-        // Aave config bit layout: bit 0 = isActive, bit 1 = isFrozen
-        assertTrue(cfg.data & 1 == 1,      "USDC reserve is not active");
-        assertTrue(cfg.data >> 1 & 1 == 0, "USDC reserve is frozen");
+        bool isActive = ((cfg.data >> 56) & 1) == 1;
+        bool isFrozen = ((cfg.data >> 57) & 1) == 1;
+
+        assertTrue(isActive, "USDC reserve is not active");
+        assertFalse(isFrozen, "USDC reserve is frozen");
     }
 
     function test_ausdc_address_matches_reserve_data() public requiresFork {

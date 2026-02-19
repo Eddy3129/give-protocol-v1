@@ -38,6 +38,15 @@ import "../../utils/GiveErrors.sol";
 contract PTAdapter is AdapterBase {
     using SafeERC20 for IERC20;
 
+    error InvalidSeriesWindow(uint64 start, uint64 maturity);
+    error SeriesNotActive(uint64 start, uint64 maturity, uint64 currentTime);
+    error SeriesAlreadyMatured(uint64 maturity, uint64 currentTime);
+    error ActiveSeriesHasDeposits(uint256 deposits);
+    error InsufficientAdapterBalance(uint256 required, uint256 available);
+
+    event SeriesConfigured(uint64 indexed start, uint64 indexed maturity);
+    event SeriesRollover(uint64 indexed oldStart, uint64 indexed oldMaturity, uint64 indexed newStart, uint64 newMaturity);
+
     // ============================================
     // STRUCTS
     // ============================================
@@ -77,7 +86,9 @@ contract PTAdapter is AdapterBase {
     constructor(bytes32 adapterId, address asset, address vault, uint64 start, uint64 maturity)
         AdapterBase(adapterId, asset, vault)
     {
+        _validateSeriesWindow(start, maturity);
         currentSeries = Series(start, maturity);
+        emit SeriesConfigured(start, maturity);
     }
 
     // ============================================
@@ -101,6 +112,18 @@ contract PTAdapter is AdapterBase {
      */
     function invest(uint256 assets) external override onlyVault {
         if (assets == 0) revert GiveErrors.InvalidInvestAmount();
+
+        Series memory series = currentSeries;
+        uint64 currentTime = uint64(block.timestamp);
+        if (currentTime < series.start || currentTime >= series.maturity) {
+            revert SeriesNotActive(series.start, series.maturity, currentTime);
+        }
+
+        uint256 adapterBalance = asset().balanceOf(address(this));
+        if (adapterBalance < deposits + assets) {
+            revert InsufficientAdapterBalance(deposits + assets, adapterBalance);
+        }
+
         deposits += assets;
         emit Invested(assets);
     }
@@ -115,6 +138,8 @@ contract PTAdapter is AdapterBase {
     function divest(uint256 assets) external override onlyVault returns (uint256 returned) {
         if (assets == 0) revert GiveErrors.InvalidDivestAmount();
 
+        uint256 requested = assets;
+
         // Cap at available deposits
         if (assets > deposits) assets = deposits;
 
@@ -122,7 +147,7 @@ contract PTAdapter is AdapterBase {
         returned = assets;
 
         asset().safeTransfer(vault(), assets);
-        emit Divested(assets, returned);
+        emit Divested(requested, returned);
     }
 
     /**
@@ -143,7 +168,12 @@ contract PTAdapter is AdapterBase {
      * @return returned Total deposits in current series
      */
     function emergencyWithdraw() external override onlyVault returns (uint256 returned) {
-        returned = deposits;
+        returned = asset().balanceOf(address(this));
+
+        if (returned > 0) {
+            asset().safeTransfer(vault(), returned);
+        }
+
         deposits = 0;
         emit EmergencyWithdraw(returned);
     }
@@ -160,6 +190,24 @@ contract PTAdapter is AdapterBase {
      * @param newMaturity New series maturity timestamp
      */
     function rollover(uint64 newStart, uint64 newMaturity) external onlyVault {
+        _validateSeriesWindow(newStart, newMaturity);
+
+        Series memory series = currentSeries;
+        uint64 currentTime = uint64(block.timestamp);
+        if (deposits > 0 && currentTime < series.maturity) {
+            revert ActiveSeriesHasDeposits(deposits);
+        }
+        if (deposits > 0 && currentTime >= series.maturity) {
+            revert SeriesAlreadyMatured(series.maturity, currentTime);
+        }
+
         currentSeries = Series(newStart, newMaturity);
+        emit SeriesRollover(series.start, series.maturity, newStart, newMaturity);
+    }
+
+    function _validateSeriesWindow(uint64 start, uint64 maturity) private pure {
+        if (start == 0 || maturity <= start) {
+            revert InvalidSeriesWindow(start, maturity);
+        }
     }
 }

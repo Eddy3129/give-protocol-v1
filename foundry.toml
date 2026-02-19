@@ -30,10 +30,15 @@ remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
     "forge-std/=lib/forge-std/src/",
-    "@aave/core-v3/=lib/aave-v3-core/"
+    "@aave/core-v3/=lib/aave-v3-core/",
+    "pendle-core-v2-public/=lib/pendle-core-v2-public/contracts/"
 ]
 
 [rpc_endpoints]
+# Private endpoint (Alchemy/Infura) — set BASE_RPC_URL in .env for higher rate limits.
+# Public fallback used automatically by ForkBase.t.sol when BASE_RPC_URL is unset.
+#   Public:  https://base-rpc.publicnode.com
+#   Alchemy: https://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>
 base = "${BASE_RPC_URL}"
 
 [profile.test]

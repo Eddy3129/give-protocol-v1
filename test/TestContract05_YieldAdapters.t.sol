@@ -189,6 +189,32 @@ contract TestContract05_YieldAdapters is Test {
         assertEq(adapter.deposits(), 0);
     }
 
+    function test_Contract05_Case09b_PTAdapter_invalidSeriesReverts() public {
+        vm.expectRevert(abi.encodeWithSelector(PTAdapter.InvalidSeriesWindow.selector, uint64(block.timestamp), uint64(block.timestamp)));
+        new PTAdapter(ADAPTER_ID, address(asset), vault, uint64(block.timestamp), uint64(block.timestamp));
+    }
+
+    function test_Contract05_Case09c_PTAdapter_emergencyWithdrawTransfersToVault() public {
+        PTAdapter adapter = new PTAdapter(
+            ADAPTER_ID, address(asset), vault, uint64(block.timestamp), uint64(block.timestamp + 30 days)
+        );
+
+        vm.prank(vault);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
+
+        vm.prank(vault);
+        adapter.invest(100 ether);
+
+        uint256 vaultBalanceBefore = asset.balanceOf(vault);
+
+        vm.prank(vault);
+        uint256 returned = adapter.emergencyWithdraw();
+
+        assertEq(returned, 100 ether);
+        assertEq(asset.balanceOf(vault), vaultBalanceBefore + 100 ether);
+        assertEq(adapter.deposits(), 0);
+    }
+
     // ============================================
     // CLAIMABLE YIELD ADAPTER TESTS
     // ============================================

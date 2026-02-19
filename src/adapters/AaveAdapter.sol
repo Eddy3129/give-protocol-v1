@@ -232,22 +232,27 @@ contract AaveAdapter is IYieldAdapter, AccessControl, ReentrancyGuard, Pausable 
         uint256 aTokenBalance = aToken.balanceOf(address(this));
         if (aTokenBalance == 0) return 0;
 
+        bool withdrawAll = assets > aTokenBalance;
+        uint256 expected = withdrawAll ? aTokenBalance : assets;
+
         // Withdraw from Aave (use type(uint256).max to withdraw all if needed)
-        uint256 toWithdraw = assets > aTokenBalance ? type(uint256).max : assets;
+        uint256 toWithdraw = withdrawAll ? type(uint256).max : assets;
 
         uint256 balanceBefore = asset.balanceOf(address(this));
         returned = aavePool.withdraw(address(asset), toWithdraw, address(this));
 
         // Verify we received the expected amount (within slippage tolerance)
-        if (!emergencyMode && returned < assets) {
-            uint256 slippage = ((assets - returned) * BASIS_POINTS) / assets;
+        if (!emergencyMode && expected > 0 && returned < expected) {
+            uint256 slippage = ((expected - returned) * BASIS_POINTS) / expected;
             if (slippage > maxSlippageBps) {
                 revert GiveErrors.SlippageExceeded(slippage, maxSlippageBps);
             }
         }
 
         // Update total invested
-        if (returned <= totalInvested) {
+        if (withdrawAll) {
+            totalInvested = 0;
+        } else if (returned <= totalInvested) {
             totalInvested -= returned;
         } else {
             totalInvested = 0;

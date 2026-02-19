@@ -6,6 +6,7 @@ import {ACLManager} from "../src/governance/ACLManager.sol";
 import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
 import {StrategyManager} from "../src/manager/StrategyManager.sol";
 import {AaveAdapter} from "../src/adapters/AaveAdapter.sol";
+import {PendleAdapter} from "../src/adapters/kinds/PendleAdapter.sol";
 import {console} from "forge-std/console.sol";
 
 /**
@@ -34,6 +35,7 @@ contract Deploy03_Initialize is BaseDeployment {
     StrategyRegistry public strategyRegistry;
     StrategyManager public usdcStrategyManager;
     AaveAdapter public aaveUsdcAdapter;
+    PendleAdapter public pendleUsdcAdapter;
 
     // Admin addresses
     address public admin;
@@ -54,6 +56,7 @@ contract Deploy03_Initialize is BaseDeployment {
 
     // Strategy IDs
     bytes32 public aaveUsdcStrategyId;
+    bytes32 public pendleUsdcStrategyId;
 
     function setUp() public override {
         super.setUp();
@@ -65,6 +68,7 @@ contract Deploy03_Initialize is BaseDeployment {
 
         // Try to load Aave adapter (may not exist if Aave not available)
         aaveUsdcAdapter = AaveAdapter(loadDeploymentOrZero("AaveUSDCAdapter"));
+        pendleUsdcAdapter = PendleAdapter(loadDeploymentOrZero("PendleUSDCAdapter"));
 
         // Load admin addresses from env
         admin = requireEnvAddress("ADMIN_ADDRESS");
@@ -85,6 +89,7 @@ contract Deploy03_Initialize is BaseDeployment {
 
         // Strategy IDs
         aaveUsdcStrategyId = keccak256("strategy.aave.usdc");
+        pendleUsdcStrategyId = keccak256("strategy.pendle.usdc");
 
         console.log("Loaded ACLManager:", address(aclManager));
         console.log("Admin:", admin);
@@ -195,6 +200,26 @@ contract Deploy03_Initialize is BaseDeployment {
             console.log("Skipping Aave strategy (adapter not deployed)");
         }
 
+        if (address(pendleUsdcAdapter) != address(0)) {
+            strategyRegistry.registerStrategy(
+                StrategyRegistry.StrategyInput({
+                    id: pendleUsdcStrategyId,
+                    adapter: address(pendleUsdcAdapter),
+                    riskTier: keccak256("MEDIUM"),
+                    maxTvl: 5_000_000e6,
+                    metadataHash: keccak256("ipfs://QmPendleUSDC")
+                })
+            );
+
+            console.log("Registered Pendle USDC Strategy");
+            console.log("Strategy ID:", vm.toString(pendleUsdcStrategyId));
+            console.log("Adapter:", address(pendleUsdcAdapter));
+
+            saveDeploymentBytes32("PendleUSDCStrategyId", pendleUsdcStrategyId);
+        } else {
+            console.log("Skipping Pendle strategy (adapter not deployed)");
+        }
+
         // ========================================
         // STEP 4: Approve & Activate Adapters
         // ========================================
@@ -218,6 +243,17 @@ contract Deploy03_Initialize is BaseDeployment {
             uint256 rebalanceInterval = getEnvUintOr("REBALANCE_INTERVAL", 1 days);
             usdcStrategyManager.setRebalanceInterval(rebalanceInterval);
             console.log("Rebalance interval:", rebalanceInterval, "seconds");
+        }
+
+        if (address(pendleUsdcAdapter) != address(0)) {
+            usdcStrategyManager.setAdapterApproval(address(pendleUsdcAdapter), true);
+            console.log("Approved Pendle adapter on USDC vault");
+
+            bool usePendleAsActive = getEnvBoolOr("USE_PENDLE_AS_ACTIVE", false);
+            if (usePendleAsActive) {
+                usdcStrategyManager.setActiveAdapter(address(pendleUsdcAdapter));
+                console.log("Activated Pendle adapter on USDC vault");
+            }
         }
 
         // ========================================
@@ -255,6 +291,9 @@ contract Deploy03_Initialize is BaseDeployment {
         console.log("All roles granted");
         if (address(aaveUsdcAdapter) != address(0)) {
             console.log("Aave USDC strategy registered and activated");
+        }
+        if (address(pendleUsdcAdapter) != address(0)) {
+            console.log("Pendle USDC strategy registered and approved");
         }
         console.log("\nProtocol deployment complete!");
         console.log("Next steps:");

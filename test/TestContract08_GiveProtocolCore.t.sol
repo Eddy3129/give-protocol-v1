@@ -209,6 +209,31 @@ contract TestContract08_GiveProtocolCore is Test {
         assertTrue(active);
     }
 
+    function test_Contract08_Case07b_configureFixedMaturityAdapterKind() public {
+        bytes32 pendleAdapterId = keccak256("adapter.pendle.usdc");
+
+        AdapterModule.AdapterConfigInput memory cfg = AdapterModule.AdapterConfigInput({
+            id: pendleAdapterId,
+            proxy: makeAddr("pendleAdapterProxy"),
+            implementation: makeAddr("pendleAdapterImpl"),
+            asset: makeAddr("usdcAsset"),
+            vault: makeAddr("usdcVault"),
+            kind: GiveTypes.AdapterKind.FixedMaturityToken,
+            metadataHash: keccak256("ipfs://QmPendleAdapter")
+        });
+
+        vm.prank(adapterManager);
+        protocol.configureAdapter(pendleAdapterId, cfg);
+
+        (address assetAddress, address vaultAddress, GiveTypes.AdapterKind kind, bool active) =
+            protocol.getAdapterConfig(pendleAdapterId);
+
+        assertEq(assetAddress, cfg.asset);
+        assertEq(vaultAddress, cfg.vault);
+        assertEq(uint8(kind), uint8(GiveTypes.AdapterKind.FixedMaturityToken));
+        assertTrue(active);
+    }
+
     function test_Contract08_Case08_configureAdapterUnauthorized() public {
         AdapterModule.AdapterConfigInput memory cfg = AdapterModule.AdapterConfigInput({
             id: adapterId,

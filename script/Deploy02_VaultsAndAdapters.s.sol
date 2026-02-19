@@ -6,6 +6,7 @@ import {GiveVault4626} from "../src/vault/GiveVault4626.sol";
 import {CampaignVault4626} from "../src/vault/CampaignVault4626.sol";
 import {CampaignVaultFactory} from "../src/factory/CampaignVaultFactory.sol";
 import {AaveAdapter} from "../src/adapters/AaveAdapter.sol";
+import {PendleAdapter} from "../src/adapters/kinds/PendleAdapter.sol";
 import {StrategyManager} from "../src/manager/StrategyManager.sol";
 import {ACLManager} from "../src/governance/ACLManager.sol";
 import {GiveProtocolCore} from "../src/core/GiveProtocolCore.sol";
@@ -53,11 +54,15 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
     CampaignVaultFactory public vaultFactory;
     GiveVault4626 public usdcVault;
     AaveAdapter public aaveUsdcAdapter;
+    PendleAdapter public pendleUsdcAdapter;
     StrategyManager public usdcStrategyManager;
 
     // External contracts
     address public usdcToken;
     address public aavePool;
+    address public pendleRouter;
+    address public pendleMarket;
+    address public pendlePt;
 
     // Admin addresses
     address public admin;
@@ -67,6 +72,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
     bytes32 public usdcVaultId;
     bytes32 public conservativeRiskId;
     bytes32 public aaveUsdcAdapterId;
+    bytes32 public pendleUsdcAdapterId;
 
     function setUp() public override {
         super.setUp();
@@ -85,11 +91,15 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         // Load external contracts (use env for real networks)
         usdcToken = getEnvAddressOr("USDC_ADDRESS", address(0));
         aavePool = getEnvAddressOr("AAVE_POOL_ADDRESS", address(0));
+        pendleRouter = getEnvAddressOr("PENDLE_ROUTER_ADDRESS", address(0));
+        pendleMarket = getEnvAddressOr("PENDLE_MARKET_ADDRESS", address(0));
+        pendlePt = getEnvAddressOr("PENDLE_PT_ADDRESS", address(0));
 
         // Generate deterministic IDs
         usdcVaultId = keccak256("vault.usdc.main");
         conservativeRiskId = keccak256("risk.conservative");
         aaveUsdcAdapterId = keccak256("adapter.aave.usdc");
+        pendleUsdcAdapterId = keccak256("adapter.pendle.usdc");
 
         console.log("Loaded ACLManager:", address(aclManager));
         console.log("Loaded GiveProtocolCore:", address(protocolCore));
@@ -283,6 +293,24 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
             console.log("Skipping Aave adapter (AAVE_POOL_ADDRESS not set)");
         }
 
+        if (pendleRouter != address(0) && pendleMarket != address(0) && pendlePt != address(0)) {
+            pendleUsdcAdapter = new PendleAdapter(
+                pendleUsdcAdapterId,
+                usdcToken,
+                address(usdcVault),
+                pendleRouter,
+                pendleMarket,
+                pendlePt
+            );
+
+            console.log("Pendle USDC Adapter:", address(pendleUsdcAdapter));
+
+            saveDeployment("PendleUSDCAdapter", address(pendleUsdcAdapter));
+            saveDeploymentBytes32("PendleUSDCAdapterId", pendleUsdcAdapterId);
+        } else {
+            console.log("Skipping Pendle adapter (PENDLE_ROUTER_ADDRESS / PENDLE_MARKET_ADDRESS / PENDLE_PT_ADDRESS not set)");
+        }
+
         // ========================================
         // STEP 9: Deploy Strategy Manager
         // ========================================
@@ -314,6 +342,9 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         console.log("Main USDC Vault:", address(usdcVault));
         if (aavePool != address(0)) {
             console.log("Aave Adapter:", address(aaveUsdcAdapter));
+        }
+        if (address(pendleUsdcAdapter) != address(0)) {
+            console.log("Pendle Adapter:", address(pendleUsdcAdapter));
         }
         console.log("Strategy Manager:", address(usdcStrategyManager));
         console.log("\nNext step: Deploy03_Initialize.s.sol");

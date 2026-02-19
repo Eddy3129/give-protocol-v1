@@ -66,6 +66,7 @@ contract AaveAdapterForkTest is ForkBase {
 
     function test_harvest_accrues_real_yield_after_30_days() public requiresFork {
         _invest(INVEST_AMOUNT);
+        uint256 vaultUsdcBefore = usdc.balanceOf(address(this));
         uint256 balanceBefore = ausdc.balanceOf(address(adapter));
 
         vm.warp(block.timestamp + 30 days);
@@ -76,7 +77,7 @@ contract AaveAdapterForkTest is ForkBase {
         assertEq(loss, 0, "unexpected loss from Aave");
         assertGt(
             usdc.balanceOf(address(this)),
-            100_000e6, // started with this balance
+            vaultUsdcBefore,
             "profit not transferred to vault"
         );
         // aToken balance should now equal principal (profit withdrawn)
