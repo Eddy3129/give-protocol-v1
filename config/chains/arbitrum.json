@@ -1,0 +1,21 @@
+{
+  "chainId": 42161,
+  "name": "Arbitrum One",
+  "networkName": "arbitrum-one",
+  "rpcEnvVar": "ARBITRUM_RPC_URL",
+  "fallbackRpcEnvVar": "ARBITRUM_RPC_URL_FALLBACK",
+  "deploymentFile": "deployments/arbitrum-one-latest.json",
+  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "protocol": {
+    "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "usdcDecimals": 6,
+    "usdcBalanceOfSlot": 51,
+    "weth": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+    "wsteth": "0x5979D7b546E38E414F7E9822514be443A4800529",
+    "aavePool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    "aaveOracle": "0xb56c2F0B653B2e0b10C9b928C8580Ac5Df02C7C7",
+    "aUsdc": "0x724dc807b04555b71ed48a6896b6F41593b8C637",
+    "pendleRouter": "0x888888888889758F76e7103c6CbF23ABbF58F946"
+  },
+  "notes": "Arbitrum One. Uses native USDC (not USDC.e bridged). wstETH is Lido bridged."
+}

@@ -1,0 +1,21 @@
+{
+  "chainId": 31337,
+  "name": "Anvil Local",
+  "networkName": "anvil",
+  "rpcEnvVar": "ANVIL_RPC_URL",
+  "fallbackRpcEnvVar": null,
+  "deploymentFile": "deployments/anvil-latest.json",
+  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "protocol": {
+    "usdc": null,
+    "usdcDecimals": 6,
+    "usdcBalanceOfSlot": null,
+    "weth": null,
+    "wsteth": null,
+    "aavePool": null,
+    "aaveOracle": null,
+    "aUsdc": null,
+    "pendleRouter": null
+  },
+  "notes": "Plain Anvil. Protocol addresses are mock contracts deployed by deploy_local_all.sh — resolved at runtime from deployment JSON."
+}

@@ -206,6 +206,31 @@ forge test --match-path "test/integration/TestAction02_MultiStrategyOperations.t
 
 ---
 
+## Frontend Integration Flow (Before Phase 6)
+
+Run frontend/dapp integration checks in this order:
+
+1. **Local (Anvil + viem)**
+   - Validate read/write contract wiring, ABI decoding, and revert handling quickly.
+   - Confirm wallet flow assumptions (connect, approve, deposit, claim, redeem).
+
+2. **RPC/Fork (viem against Base state)**
+   - Validate live assumptions not visible in local-only runs (token behavior, current pool config, event shape).
+   - Use at least two RPC endpoints to test provider fallback and retry behavior.
+
+3. **Tenderly Virtual TestNet (Phase 6 pre-deploy gate)**
+   - Run end-to-end scenarios with deploy scripts + frontend flows on simulated mainnet state.
+   - Collect traces/gas evidence for release signoff.
+
+Pass criteria before proceeding to deployment:
+
+- Frontend reads/writes pass for core user journeys.
+- Event decoding and UI state transitions match on-chain outcomes.
+- Revert mapping is user-friendly and deterministic.
+- Multi-RPC fallback works under degraded provider conditions.
+
+---
+
 ## Pending / Future Improvements (Only Uncovered Items)
 
 ### GAP-6 (Lower Priority)

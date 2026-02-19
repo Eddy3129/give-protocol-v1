@@ -8,6 +8,14 @@
     "test:verbose": "forge fmt && forge test -vvv",
     "test:gas": "forge fmt && forge test --gas-report",
     "coverage": "forge fmt && forge coverage",
+    "deploy:local:all": "bash script/operations/deploy_local_all.sh",
+    "frontend:smoke:local": "node script/frontend/viem-smoke.mjs --mode=local",
+    "frontend:smoke:rpc": "node script/frontend/viem-smoke.mjs --mode=rpc",
+    "frontend:smoke:fork": "bash script/frontend/fork-smoke.sh",
+    "frontend:smoke:rpc:arbitrum": "CHAIN_CONFIG=config/chains/arbitrum.json node script/frontend/viem-smoke.mjs --mode=rpc",
+    "frontend:smoke:rpc:optimism": "CHAIN_CONFIG=config/chains/optimism.json node script/frontend/viem-smoke.mjs --mode=rpc",
+    "frontend:smoke:fork:arbitrum": "CHAIN_CONFIG=config/chains/arbitrum.json bash script/frontend/fork-smoke.sh",
+    "frontend:smoke:fork:optimism": "CHAIN_CONFIG=config/chains/optimism.json bash script/frontend/fork-smoke.sh",
     "lint": "forge fmt --check && forge lint",
     "lint:fix": "forge fmt",
     "clean": "forge clean"
@@ -29,7 +37,8 @@
     "pnpm": ">=8.0.0"
   },
   "devDependencies": {
-    "@openzeppelin/contracts": "^5.3.0"
+    "@openzeppelin/contracts": "^5.3.0",
+    "viem": "2.46.2"
   },
   "dependencies": {
     "@openzeppelin/contracts-upgradeable": "^5.0.0"

@@ -1,0 +1,21 @@
+{
+  "chainId": 10,
+  "name": "Optimism",
+  "networkName": "optimism",
+  "rpcEnvVar": "OPTIMISM_RPC_URL",
+  "fallbackRpcEnvVar": "OPTIMISM_RPC_URL_FALLBACK",
+  "deploymentFile": "deployments/optimism-latest.json",
+  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "protocol": {
+    "usdc": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    "usdcDecimals": 6,
+    "usdcBalanceOfSlot": 9,
+    "weth": "0x4200000000000000000000000000000000000006",
+    "wsteth": "0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb",
+    "aavePool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    "aaveOracle": "0xD81eb3728a631871a7eBBaD631b5f424909f0c77",
+    "aUsdc": "0x38d693cE1dF5AaDF7bC62595A37D667aD57922e",
+    "pendleRouter": "0x888888888889758F76e7103c6CbF23ABbF58F946"
+  },
+  "notes": "Optimism mainnet. Uses native USDC (not USDC.e)."
+}
