@@ -1,6 +1,6 @@
 # GIVE Protocol — Concise Status Summary
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 ## Project Snapshot
 
@@ -141,6 +141,41 @@ Verify:
 - `forge test --match-path test/fork/PendleAdapter.fork.t.sol -v`
 - `forge test --match-path test/integration/TestAction02_MultiStrategyOperations.t.sol -v`
 
+### Update I — Frontend Integration Suite (Complete)
+
+Viem-based smoke test covering the full deposit/redeem lifecycle against
+plain Anvil, Base mainnet fork, and live Base RPC. Multi-chain config layer
+added for Arbitrum and Optimism extensibility. Deploy03 wiring gap fixed.
+
+Files:
+
+- `script/frontend/viem-smoke.mjs` (new)
+- `script/frontend/fork-smoke.sh` (new)
+- `script/operations/deploy_local_all.sh` (new)
+- `config/chains/base.json` (new)
+- `config/chains/arbitrum.json` (new)
+- `config/chains/optimism.json` (new)
+- `config/chains/local.json` (new)
+- `script/Deploy02_VaultsAndAdapters.s.sol` (persist USDCAddress)
+- `script/Deploy03_Initialize.s.sol` (wire donationRouter + authorizedCaller)
+- `script/base/BaseDeployment.sol` (Arbitrum/Optimism chainId support)
+
+Fixes caught by smoke tests:
+
+- `setDonationRouter` was never called in Deploy03 — PayoutRouter share
+  tracking and yield routing were completely bypassed
+- `setAuthorizedCaller(vault)` was never called — vault calls into
+  PayoutRouter would revert unconditionally
+- USDCAddress not persisted to deployment JSON
+
+Verify:
+
+- `npm run frontend:smoke:local`
+- `BASE_RPC_URL=... npm run frontend:smoke:rpc`
+- `BASE_RPC_URL=... npm run frontend:smoke:fork`
+
+Results: 33/33 local, 32/32 Base fork, 11/11 Base RPC.
+
 ### Update H — Fork Gap Coverage Additions (Complete for GAP-1..5)
 
 Added/validated fork suites:
@@ -206,52 +241,107 @@ forge test --match-path "test/integration/TestAction02_MultiStrategyOperations.t
 
 ---
 
-## Frontend Integration Flow (Before Phase 6)
+## Frontend Integration Flow (Complete Through Phase 5)
 
-Run frontend/dapp integration checks in this order:
+### Phase 5 — Done
 
-1. **Local (Anvil + viem)**
-   - Validate read/write contract wiring, ABI decoding, and revert handling quickly.
-   - Confirm wallet flow assumptions (connect, approve, deposit, claim, redeem).
+| Check | Tool | Status |
+|---|---|---|
+| Local lifecycle (approve → deposit → redeem) | viem + Anvil | ✓ |
+| PayoutRouter share tracking after deposit | viem + Anvil | ✓ |
+| ERC-4626 conversion parity | viem + Anvil | ✓ |
+| Revert selector mapping | viem + Anvil | ✓ |
+| Event log queries | viem + Anvil | ✓ |
+| Live Base RPC protocol connectivity | viem --mode=rpc | ✓ |
+| USDC, Aave, wstETH, Pendle on Base | viem --mode=rpc | ✓ |
+| Base fork full lifecycle against real USDC/Aave | viem + fork Anvil | ✓ |
+| Multi-chain config layer (Arbitrum, Optimism) | config/chains/ | ✓ |
 
-2. **RPC/Fork (viem against Base state)**
-   - Validate live assumptions not visible in local-only runs (token behavior, current pool config, event shape).
-   - Use at least two RPC endpoints to test provider fallback and retry behavior.
+Run:
 
-3. **Tenderly Virtual TestNet (Phase 6 pre-deploy gate)**
-   - Run end-to-end scenarios with deploy scripts + frontend flows on simulated mainnet state.
-   - Collect traces/gas evidence for release signoff.
+```bash
+npm run frontend:smoke:local
+BASE_RPC_URL=... npm run frontend:smoke:rpc
+BASE_RPC_URL=... npm run frontend:smoke:fork
+```
 
-Pass criteria before proceeding to deployment:
+---
 
-- Frontend reads/writes pass for core user journeys.
-- Event decoding and UI state transitions match on-chain outcomes.
-- Revert mapping is user-friendly and deterministic.
-- Multi-RPC fallback works under degraded provider conditions.
+## Phase 6 — Tenderly + Production Readiness (Pending)
+
+Phase 6 covers everything between "fork smoke passes" and "safe to deploy to mainnet".
+None of this is covered by any prior phase.
+
+### 6A — Tenderly Virtual TestNet scenarios
+
+Deploy to a Tenderly Virtual TestNet (simulated Base mainnet with real state) and
+run scripted scenarios. This is the final pre-deploy gate in the mandatory deployment
+gates list.
+
+Scenarios required:
+
+- **Happy path**: deposit → yield accrual → harvest → claimYield → redeem
+- **Emergency recovery**: emergencyPause → grace period → emergencyWithdrawUser
+- **Checkpoint halt/resume**: scheduleCheckpoint → voteOnCheckpoint → finalizeCheckpoint
+- **Fee timelock**: proposeFeeChange → wait 7 days → executeFeeChange
+- **Gas profile**: export gas traces for deposit, harvest, claimYield, redeem
+
+Collect: trace links, gas evidence, event shapes — needed for release signoff.
+
+### 6B — Multi-RPC fallback validation
+
+The smoke test currently skips fallback when only one RPC is provided.
+Needs a second endpoint (`BASE_RPC_URL_FALLBACK`) configured and validated:
+
+- Primary RPC degraded → fallback kicks in transparently
+- Both RPCs down → surfaced error is user-friendly, not a raw viem transport error
+
+### 6C — Revert message UX audit
+
+The smoke test confirms revert selectors (`0xb94abeec`) but not human-readable
+messages. The dapp needs to decode and display actionable errors.
+
+Map every revert the user can trigger to a display string:
+
+| Revert | User-facing message |
+|---|---|
+| `ERC4626ExceededMaxRedeem` | "Insufficient shares to redeem" |
+| `InsufficientCash` | "Vault is rebalancing, try again shortly" |
+| `ExcessiveLoss` | "Withdrawal paused due to slippage" |
+| `EnforcedPause` | "Vault is paused" |
+| `GracePeriodExpired` | "Emergency period ended, contact support" |
+| `ZeroAmount` | "Amount must be greater than zero" |
+
+### 6D — Mainnet deployment runbook
+
+The forge scripts exist but the actual mainnet deployment process isn't documented
+or rehearsed. Before going live:
+
+- Private key management (hardware wallet or KMS — no plaintext `PRIVATE_KEY`)
+- Exact deploy sequence with verification flags
+- Post-deploy checklist: verify contracts on Basescan, confirm donationRouter wired,
+  confirm authorizedCaller set, smoke test against deployed addresses
+- Owner handoff: transfer admin roles from deployer to multisig
+
+### 6E — Contract verification on Basescan
+
+`VERIFY_CONTRACTS=true` path in `BaseDeployment.verifyContract()` exists but is
+untested. Validate that all proxies and implementations verify correctly:
+
+```bash
+VERIFY_CONTRACTS=true ETHERSCAN_API_KEY=... forge script script/Deploy01_Infrastructure.s.sol \
+  --rpc-url $BASE_RPC_URL --broadcast --verify
+```
+
+### 6F (Lower Priority) — GAP-6 adapter fork suites
+
+No dedicated fork suites yet for `GrowthAdapter`, `ClaimableYieldAdapter`,
+`ManualManageAdapter`. Not a blocker — no live Base deployment target for
+realistic fork behavior. Add when adapters have mainnet deployments to fork against.
 
 ---
 
 ## Pending / Future Improvements (Only Uncovered Items)
-
-### GAP-6 (Lower Priority)
-
-No dedicated fork suites yet for:
-
-- `GrowthAdapter`
-- `ClaimableYieldAdapter`
-- `ManualManageAdapter`
-
-Reason: no strong live Base deployment target for realistic fork behavior (mostly mock-worthy).
-
-### Tenderly Phase (Pending)
-
-Scenario validation still pending:
-
-- Happy path
-- Emergency recovery
-- Checkpoint halt/resume
-- Fee timelock validation
-- Gas profile exports
 
 ### Optional Depth Work (Not Blockers for Current Scope)
 
@@ -292,6 +382,24 @@ forge test --match-path "test/invariant/**" -v
 ```bash
 forge test --match-path "test/fork/ForkSanity*" --fork-url $BASE_RPC_URL -v
 forge test --match-path "test/fork/**" --fork-url $BASE_RPC_URL -v
+```
+
+### Frontend integration
+
+```bash
+# Local Anvil — full lifecycle (deploy first)
+npm run deploy:local:all
+npm run frontend:smoke:local
+
+# Live Base RPC — protocol connectivity only
+BASE_RPC_URL=... npm run frontend:smoke:rpc
+
+# Base mainnet fork — full lifecycle against real USDC/Aave
+BASE_RPC_URL=... npm run frontend:smoke:fork
+
+# Other chains (needs ARBITRUM_RPC_URL / OPTIMISM_RPC_URL)
+npm run frontend:smoke:rpc:arbitrum
+npm run frontend:smoke:fork:arbitrum
 ```
 
 ### Static analysis
