@@ -87,16 +87,16 @@ contract TestContract03_CampaignRegistry is Test {
 
     function setUp() public {
         superAdmin = address(this);
-        campaignAdmin = address(0x1);
-        strategyAdmin = address(0x2);
-        curator = address(0x3);
-        checkpointCouncil = address(0x4);
-        upgrader = address(0x5);
-        proposer = address(0x10);
-        ngo = address(0x11);
-        supporter1 = address(0x20);
-        supporter2 = address(0x21);
-        user1 = address(0x30);
+        campaignAdmin = address(0x1001);
+        strategyAdmin = address(0x1002);
+        curator = address(0x1003);
+        checkpointCouncil = address(0x1004);
+        upgrader = address(0x1005);
+        proposer = address(0x1010);
+        ngo = address(0x1011);
+        supporter1 = address(0x1020);
+        supporter2 = address(0x1021);
+        user1 = address(0x1030);
 
         adapter = address(0x100);
         vault = address(0x200);

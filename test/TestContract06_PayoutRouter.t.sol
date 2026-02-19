@@ -148,13 +148,13 @@ contract TestContract06_PayoutRouter is Test {
     }
 
     // ============================================
-    // PAYOUT DISTRIBUTION TESTS
+    // PAYOUT DISTRIBUTION TESTS (PULL MODEL)
     // ============================================
 
     function test_Contract06_Case03_distributeYieldBasic() public {
         // Setup: Give supporter1 50% of vault shares
         vm.prank(mockVault);
-        payoutRouter.updateUserShares(supporter1, mockVault, 100 ether);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
 
         // Setup supporter preferences (50% to campaign, 50% to supporter1)
         vm.prank(supporter1);
@@ -163,9 +163,13 @@ contract TestContract06_PayoutRouter is Test {
         // Mint USDC to PayoutRouter (not vault)
         usdc.mint(address(payoutRouter), 100 ether);
 
-        // Distribute from vault
+        // Record yield from vault
         vm.prank(mockVault);
-        payoutRouter.distributeToAllUsers(address(usdc), 100 ether);
+        payoutRouter.recordYield(address(usdc), 100 ether);
+
+        // User claims
+        vm.prank(supporter1);
+        payoutRouter.claimYield(mockVault, address(usdc));
 
         // Verify protocol fee was taken (2.5%) and sent to protocolTreasury
         assertEq(usdc.balanceOf(protocolTreasury), 2.5 ether);
@@ -177,8 +181,8 @@ contract TestContract06_PayoutRouter is Test {
     function test_Contract06_Case04_distributeYieldMultipleUsers() public {
         // Give both supporters equal shares
         vm.startPrank(mockVault);
-        payoutRouter.updateUserShares(supporter1, mockVault, 50 ether);
-        payoutRouter.updateUserShares(supporter2, mockVault, 50 ether);
+        payoutRouter.updateUserShares(supporter1, 50 ether);
+        payoutRouter.updateUserShares(supporter2, 50 ether);
         vm.stopPrank();
 
         // Set preferences (valid allocations: 50, 75, 100)
@@ -191,9 +195,15 @@ contract TestContract06_PayoutRouter is Test {
         // Mint USDC to PayoutRouter
         usdc.mint(address(payoutRouter), 100 ether);
 
-        // Distribute
+        // Record yield
         vm.prank(mockVault);
-        payoutRouter.distributeToAllUsers(address(usdc), 100 ether);
+        payoutRouter.recordYield(address(usdc), 100 ether);
+
+        // Users claim independently
+        vm.prank(supporter1);
+        payoutRouter.claimYield(mockVault, address(usdc));
+        vm.prank(supporter2);
+        payoutRouter.claimYield(mockVault, address(usdc));
 
         // Both supporters should receive yield
         assertTrue(usdc.balanceOf(supporter1) > 0);
@@ -206,14 +216,18 @@ contract TestContract06_PayoutRouter is Test {
     function test_Contract06_Case05_distributeYieldNoPreferences() public {
         // Give supporter shares but no preferences set
         vm.prank(mockVault);
-        payoutRouter.updateUserShares(supporter2, mockVault, 100 ether);
+        payoutRouter.updateUserShares(supporter2, 100 ether);
 
         // Mint USDC to PayoutRouter
         usdc.mint(address(payoutRouter), 100 ether);
 
-        // Distribute
+        // Record yield
         vm.prank(mockVault);
-        payoutRouter.distributeToAllUsers(address(usdc), 100 ether);
+        payoutRouter.recordYield(address(usdc), 100 ether);
+
+        // User claims
+        vm.prank(supporter2);
+        payoutRouter.claimYield(mockVault, address(usdc));
 
         // Protocol fee should be taken and sent to protocolTreasury (2.5%)
         assertEq(usdc.balanceOf(protocolTreasury), 2.5 ether);
@@ -306,7 +320,7 @@ contract TestContract06_PayoutRouter is Test {
 
     function test_Contract06_Case11_updateUserShares() public {
         vm.prank(mockVault);
-        payoutRouter.updateUserShares(supporter1, mockVault, 100 ether);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
 
         uint256 shares = payoutRouter.getUserVaultShares(supporter1, mockVault);
         assertEq(shares, 100 ether);
@@ -317,12 +331,13 @@ contract TestContract06_PayoutRouter is Test {
 
     function test_Contract06_Case12_shareholderTracking() public {
         vm.startPrank(mockVault);
-        payoutRouter.updateUserShares(supporter1, mockVault, 50 ether);
-        payoutRouter.updateUserShares(supporter2, mockVault, 50 ether);
+        payoutRouter.updateUserShares(supporter1, 50 ether);
+        payoutRouter.updateUserShares(supporter2, 50 ether);
         vm.stopPrank();
 
-        address[] memory shareholders = payoutRouter.getVaultShareholders(mockVault);
-        assertEq(shareholders.length, 2);
+        // Pull model relies on total shares, not iterable holder tracking
+        uint256 totalShares = payoutRouter.getTotalVaultShares(mockVault);
+        assertEq(totalShares, 100 ether);
     }
 
     // ============================================
@@ -334,7 +349,7 @@ contract TestContract06_PayoutRouter is Test {
 
         // Should revert - not authorized caller
         vm.expectRevert();
-        payoutRouter.distributeToAllUsers(address(usdc), 100 ether);
+        payoutRouter.recordYield(address(usdc), 100 ether);
     }
 
     function test_Contract06_Case14_unauthorizedVaultRegistration() public {
@@ -349,7 +364,7 @@ contract TestContract06_PayoutRouter is Test {
     function test_Contract06_Case15_unauthorizedShareUpdate() public {
         // Should revert - not authorized caller
         vm.expectRevert();
-        payoutRouter.updateUserShares(supporter1, mockVault, 100 ether);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
     }
 
     // ============================================
@@ -360,12 +375,12 @@ contract TestContract06_PayoutRouter is Test {
         usdc.mint(address(payoutRouter), 100 ether);
 
         vm.prank(mockVault);
-        payoutRouter.updateUserShares(supporter1, mockVault, 100 ether);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
 
         // Should handle zero amount gracefully
         vm.prank(mockVault);
         vm.expectRevert();
-        payoutRouter.distributeToAllUsers(address(usdc), 0);
+        payoutRouter.recordYield(address(usdc), 0);
     }
 
     function test_Contract06_Case17_maxFeeBpsEnforcement() public {
@@ -383,6 +398,6 @@ contract TestContract06_PayoutRouter is Test {
         // Try to distribute with no shareholders
         vm.prank(mockVault);
         vm.expectRevert();
-        payoutRouter.distributeToAllUsers(address(usdc), 100 ether);
+        payoutRouter.recordYield(address(usdc), 100 ether);
     }
 }

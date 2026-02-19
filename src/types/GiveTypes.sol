@@ -345,6 +345,13 @@ library GiveTypes {
         uint8[3] validAllocations; // Valid allocation percentages (e.g., [25, 50, 75])
         mapping(uint256 => PendingFeeChange) pendingFeeChanges; // Pending fee changes (timelock)
         uint256 feeChangeNonce; // Nonce for fee change tracking
+
+        // Pull-model reward accounting (Phase 1.6)
+        mapping(address => mapping(address => uint256)) accumulatedYieldPerShare; // Vault => asset => acc yield/share (1e18)
+        mapping(address => mapping(address => mapping(address => uint256))) userYieldDebt; // Vault => asset => user => acc snapshot
+        mapping(address => mapping(address => mapping(address => uint256))) pendingYield; // Vault => asset => user => claimable
+        mapping(address => address[]) vaultAssets; // Assets used by each vault for reward accrual sync
+        mapping(address => mapping(address => bool)) hasVaultAsset; // Quick lookup for vault asset registration
     }
 
     /**

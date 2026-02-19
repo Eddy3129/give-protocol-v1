@@ -263,8 +263,11 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         assertGt(profit, 0, "Should have harvested profit");
         assertEq(loss, 0, "Should have no loss");
 
-        // FIX: Verify distribution effects (campaign totals tracked), not router balance
-        // Router calls distributeToAllUsers which pays out immediately
+        // Pull model: users claim after harvest to realize payouts
+        vm.prank(donor1);
+        payoutRouter.claimYield(climateVault, address(usdc));
+
+        // Verify campaign totals increased after claim
         (uint256 campaignPayoutsAfter,) = payoutRouter.getCampaignTotals(campaignClimateId);
         assertGt(campaignPayoutsAfter, campaignPayoutsBefore, "Campaign payouts should increase after harvest");
 
@@ -348,11 +351,14 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         (uint256 campaignPayoutsBefore,) = payoutRouter.getCampaignTotals(campaignClimateId);
         emit log_named_uint("Campaign payouts before", campaignPayoutsBefore);
 
-        // Harvest yield - this transfers to PayoutRouter and calls distributeToAllUsers
+        // Harvest yield - this records yield in PayoutRouter accumulator
         (uint256 profit,) = vault.harvest();
         emit log_named_uint("Harvested profit", profit);
 
-        // FIX: Verify campaign totals increased (distribution happened immediately)
+        // Pull model: user claim materializes campaign payout transfers
+        vm.prank(donor1);
+        payoutRouter.claimYield(climateVault, address(usdc));
+
         (uint256 campaignPayoutsAfter,) = payoutRouter.getCampaignTotals(campaignClimateId);
         emit log_named_uint("Campaign payouts after", campaignPayoutsAfter);
 
@@ -474,6 +480,10 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         GiveVault4626 vault = GiveVault4626(payable(climateVault));
         (uint256 profit,) = vault.harvest();
         assertGt(profit, 0, "Profit harvested");
+
+        vm.prank(donor1);
+        payoutRouter.claimYield(climateVault, address(usdc));
+
         emit log_string("  [OK] Yield harvesting and distribution");
 
         // Step 6: Checkpoint governance

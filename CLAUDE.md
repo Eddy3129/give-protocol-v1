@@ -42,10 +42,17 @@ mandatory gates are green.
   - `feeBps` dynamic usage in `PayoutRouter`
   - `_investExcessCash` early-return on `investPaused`
   - `forceClearAdapter` checks adapter has zero assets
-- ⚠️ Current Foundry baseline is **not green**: 7 failing tests in
-  `TestContract03_CampaignRegistry.t.sol` (deposit refund path).
-- ⚠️ PayoutRouter is still on push-distribution architecture (`distributeToAllUsers` +
-  `vaultShareholders` loop); accumulator pull-model migration is not yet implemented.
+- ✅ Phase 0A baseline is green: `forge test -v` passes with 224/224 tests.
+- ✅ CampaignRegistry deposit refund path failure fixed in tests by moving actor
+  addresses away from precompile range (e.g. `proposer` no longer `address(0x10)`).
+- ✅ Phase 1 focused static scan completed (`Slither` priority detectors + `Semgrep auto`).
+  - Artifact: `slither-findings.md`
+  - Result: no confirmed High/Medium issues from this focused pass
+- ✅ PayoutRouter migrated to accumulator pull model:
+  - `recordYield(asset, totalYield)` + `claimYield(vault, asset)` implemented
+  - `distributeToAllUsers` push loop removed from code path
+  - `updateUserShares(address user, uint256 newShares)` binds vault to `msg.sender`
+  - Full suite green after migration (`forge test -v`: 224/224)
 - ⚠️ Additional planned test suites are missing (`test/unit`, `test/fuzz`, `test/invariant`,
   `test/fork`).
 
@@ -74,6 +81,15 @@ forge test -v
 ```
 
 No architecture migration or new test suites until baseline is green.
+
+**Status (2026-02-19): ✅ COMPLETE**
+
+- Root cause: test actor `proposer = address(0x10)` collided with precompile behavior,
+  causing `approveCampaign` refund transfer to revert with `DepositTransferFailed()` in tests.
+- Fix applied: updated actor addresses in `test/TestContract03_CampaignRegistry.t.sol`
+  to non-precompile addresses (`0x1001`+ range).
+- Verification: `forge test --match-path test/TestContract03_CampaignRegistry.t.sol -v`
+  and `forge test -v` both pass.
 
 ---
 
@@ -129,6 +145,12 @@ slither . \
 - `tautology` warnings on SafeCast usage — OZ library noise
 
 After triage, create `slither-findings.md` documenting confirmed findings vs dismissed noise.
+
+**Status (2026-02-19): ✅ FOCUSED SCAN COMPLETE**
+
+- Slither (priority detectors): 3 findings, all triaged as dismissed/intentional.
+- Semgrep (`--config auto` on `src/`): 0 findings.
+- Report written to `slither-findings.md`.
 
 ---
 
@@ -196,6 +218,14 @@ The semgrep skill will run Solidity-specific rulesets and produce a SARIF report
 
 ### Phase 1.6 — PayoutRouter Architectural Audit Findings
 
+**Status (2026-02-19): ✅ COMPLETE**
+
+- ✅ `updateUserShares` hardened (vault inferred from `msg.sender`) and call sites updated.
+- ✅ Push distribution removed in favor of accumulator pull model (`recordYield` + `claimYield`).
+- ✅ No shareholder enumeration in active payout path.
+- ✅ Verification: `forge test --match-path test/TestContract06_PayoutRouter.t.sol -v` and
+  `forge test -v` pass (224/224).
+
 Manual audit of `PayoutRouter.sol` identified five medium-severity findings. Four share a
 single root cause (push distribution model); one is an independent access-control gap.
 
@@ -207,11 +237,13 @@ to find and remove the user. At ≈10k–20k shareholders this scan exceeds safe
 blocking withdrawals if the vault reverts on `updateUserShares` failure.
 
 **MEDIUM-B: Cross-vault share manipulation**
-`updateUserShares(user, vault, newShares)` accepts an arbitrary `vault` parameter but only
-checks `onlyAuthorized`. Any authorized caller can inflate shares for users in a vault it does
-not own. When the victim vault later calls `distributeToAllUsers`, the poisoned
-`totalVaultShares` dilutes all legitimate holders' yield.
-Fix (independent, one line): require `vault == msg.sender`.
+`updateUserShares(user, vault, newShares)` accepted an arbitrary `vault` parameter but only
+checked `onlyAuthorized`. Any authorized caller could inflate shares for users in a vault it did
+not own. When the victim vault later called `distributeToAllUsers`, the poisoned
+`totalVaultShares` diluted legitimate holders' yield.
+
+**Fix applied (2026-02-19):** API changed to
+`updateUserShares(address user, uint256 newShares)` and vault is always inferred as `msg.sender`.
 
 **MEDIUM-C: Cross-vault asset drain**
 `distributeToAllUsers(asset, totalYield)` distributes from the router's shared ERC20 balance.
@@ -304,6 +336,13 @@ are dead code once the accumulator is in place — delete them all.
 ---
 
 ### Phase 1.7 — PayoutRouter Vault Re-registration Finding
+
+**Status (2026-02-19): ✅ COMPLETE**
+
+- ✅ `claimYield` now auto-clears stale preferences on campaign mismatch and emits
+  `StalePrefCleared(user, vault)`.
+- ✅ `registerCampaignVault` now emits `VaultReassigned(vault, oldCampaignId, newCampaignId)`
+  when a vault is re-mapped.
 
 **INFO-1: Vault re-registration causes stale preferences, blocking individual yield claims**
 

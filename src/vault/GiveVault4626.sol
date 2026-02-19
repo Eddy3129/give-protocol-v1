@@ -268,7 +268,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
 
         address router = _vaultConfig().donationRouter;
         if (router != address(0)) {
-            PayoutRouter(payable(router)).updateUserShares(receiver, address(this), balanceOf(receiver));
+            PayoutRouter(payable(router)).updateUserShares(receiver, balanceOf(receiver));
         }
 
         _investExcessCash();
@@ -284,7 +284,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
 
         address router = _vaultConfig().donationRouter;
         if (router != address(0)) {
-            PayoutRouter(payable(router)).updateUserShares(owner, address(this), balanceOf(owner));
+            PayoutRouter(payable(router)).updateUserShares(owner, balanceOf(owner));
         }
     }
 
@@ -430,7 +430,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         uint256 donated = 0;
         if (profit > 0) {
             IERC20(asset()).safeTransfer(cfg.donationRouter, profit);
-            donated = PayoutRouter(payable(cfg.donationRouter)).distributeToAllUsers(asset(), profit);
+            donated = PayoutRouter(payable(cfg.donationRouter)).recordYield(asset(), profit);
         }
 
         emit Harvest(profit, loss, donated);
@@ -487,7 +487,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
 
         address router = cfg.donationRouter;
         if (router != address(0)) {
-            try PayoutRouter(payable(router)).updateUserShares(owner, address(this), balanceOf(owner)) {} catch {}
+            try PayoutRouter(payable(router)).updateUserShares(owner, balanceOf(owner)) {} catch {}
         }
 
         emit EmergencyWithdrawal(owner, receiver, shares, assets);
@@ -652,7 +652,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
 
         address router = cfg.donationRouter;
         if (router != address(0)) {
-            PayoutRouter(payable(router)).updateUserShares(receiver, address(this), balanceOf(receiver));
+            PayoutRouter(payable(router)).updateUserShares(receiver, balanceOf(receiver));
         }
 
         _investExcessCash();

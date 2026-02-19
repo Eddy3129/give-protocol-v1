@@ -32,6 +32,7 @@ contract PayoutRouter is
 
     uint256 public constant MAX_FEE_BPS = 1_000; // 10%
     uint256 public constant PROTOCOL_FEE_BPS = 250; // 2.5%
+    uint256 private constant PRECISION = 1e18;
 
     /// @notice Minimum delay before fee change takes effect (7 days)
     uint256 public constant FEE_CHANGE_DELAY = 7 days;
@@ -56,6 +57,17 @@ contract PayoutRouter is
         uint256 protocolAmount
     );
     event BeneficiaryPaid(address indexed user, address indexed vault, address beneficiary, uint256 amount);
+    event YieldRecorded(address indexed vault, address indexed asset, uint256 totalYield, uint256 deltaPerShare);
+    event YieldClaimed(
+        address indexed user,
+        address indexed vault,
+        address indexed asset,
+        uint256 campaignAmount,
+        uint256 beneficiaryAmount,
+        uint256 protocolAmount
+    );
+    event StalePrefCleared(address indexed user, address indexed vault);
+    event VaultReassigned(address indexed vault, bytes32 indexed oldCampaignId, bytes32 indexed newCampaignId);
     event FeeConfigUpdated(
         address indexed oldRecipient, address indexed newRecipient, uint256 oldFeeBps, uint256 newFeeBps
     );
@@ -192,6 +204,22 @@ contract PayoutRouter is
     function getCampaignTotals(bytes32 campaignId) external view returns (uint256 payouts, uint256 protocolFees) {
         GiveTypes.PayoutRouterState storage s = _state();
         return (s.campaignTotalPayouts[campaignId], s.campaignProtocolFees[campaignId]);
+    }
+
+    function getPendingYield(address user, address vault, address asset) external view returns (uint256) {
+        GiveTypes.PayoutRouterState storage s = _state();
+
+        uint256 pending = s.pendingYield[vault][asset][user];
+        uint256 shares = s.userVaultShares[user][vault];
+        uint256 debt = s.userYieldDebt[vault][asset][user];
+        uint256 acc = s.accumulatedYieldPerShare[vault][asset];
+
+        if (shares == 0 || acc <= debt) {
+            return pending;
+        }
+
+        uint256 newlyAccrued = (shares * (acc - debt)) / PRECISION;
+        return pending + newlyAccrued;
     }
 
     // ===== Role-managed configuration =====
@@ -335,7 +363,13 @@ contract PayoutRouter is
             revert GiveErrors.ZeroAddress();
         }
         GiveTypes.PayoutRouterState storage s = _state();
+        bytes32 oldCampaignId = s.vaultCampaigns[vault];
         s.vaultCampaigns[vault] = campaignId;
+
+        if (oldCampaignId != bytes32(0) && oldCampaignId != campaignId) {
+            emit VaultReassigned(vault, oldCampaignId, campaignId);
+        }
+
         emit CampaignVaultRegistered(vault, campaignId);
     }
 
@@ -363,32 +397,23 @@ contract PayoutRouter is
 
     // ===== Share tracking =====
 
-    function updateUserShares(address user, address vault, uint256 newShares) external onlyAuthorized {
+    function updateUserShares(address user, uint256 newShares) external onlyAuthorized {
         GiveTypes.PayoutRouterState storage s = _state();
+        address vault = msg.sender;
+
+        _syncUserPendingAcrossAssets(s, vault, user);
+
         uint256 oldShares = s.userVaultShares[user][vault];
         s.userVaultShares[user][vault] = newShares;
         s.totalVaultShares[vault] = s.totalVaultShares[vault] - oldShares + newShares;
-
-        if (oldShares == 0 && newShares > 0) {
-            if (!s.hasVaultShare[vault][user]) {
-                s.vaultShareholders[vault].push(user);
-                s.hasVaultShare[vault][user] = true;
-            }
-        } else if (oldShares > 0 && newShares == 0) {
-            if (s.hasVaultShare[vault][user]) {
-                _removeShareholder(s, vault, user);
-                s.hasVaultShare[vault][user] = false;
-            }
-        }
 
         emit UserSharesUpdated(user, vault, newShares, s.totalVaultShares[vault]);
     }
 
     // ===== Yield distribution =====
 
-    function distributeToAllUsers(address asset, uint256 totalYield)
+    function recordYield(address asset, uint256 totalYield)
         external
-        nonReentrant
         whenNotPaused
         onlyAuthorized
         returns (uint256)
@@ -396,37 +421,90 @@ contract PayoutRouter is
         if (asset == address(0)) revert GiveErrors.ZeroAddress();
         if (totalYield == 0) revert GiveErrors.InvalidAmount();
 
+        GiveTypes.PayoutRouterState storage s = _state();
+        address vault = msg.sender;
+
+        bytes32 campaignId = _requireCampaignForVault(s, vault);
+        GiveTypes.CampaignConfig memory campaign = CampaignRegistry(s.campaignRegistry).getCampaign(campaignId);
+        if (campaign.payoutsHalted) revert GiveErrors.OperationNotAllowed();
+
+        uint256 totalShares = s.totalVaultShares[vault];
+        if (totalShares == 0) revert GiveErrors.InvalidConfiguration();
+
         IERC20 token = IERC20(asset);
         if (token.balanceOf(address(this)) < totalYield) {
             revert GiveErrors.InsufficientBalance();
         }
 
+        uint256 deltaPerShare = (totalYield * PRECISION) / totalShares;
+        if (deltaPerShare == 0) revert GiveErrors.InvalidAmount();
+
+        s.accumulatedYieldPerShare[vault][asset] += deltaPerShare;
+        _registerVaultAsset(s, vault, asset);
+        s.totalDistributions += 1;
+
+        emit YieldRecorded(vault, asset, totalYield, deltaPerShare);
+
+        return totalYield;
+    }
+
+    function claimYield(address vault, address asset)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256)
+    {
+        if (asset == address(0)) revert GiveErrors.ZeroAddress();
+
         GiveTypes.PayoutRouterState storage s = _state();
-        bytes32 campaignId = _requireCampaignForVault(s, msg.sender);
+        bytes32 campaignId = _requireCampaignForVault(s, vault);
         GiveTypes.CampaignConfig memory campaign = CampaignRegistry(s.campaignRegistry).getCampaign(campaignId);
         if (campaign.payoutsHalted) revert GiveErrors.OperationNotAllowed();
 
-        uint256 totalShares = s.totalVaultShares[msg.sender];
-        if (totalShares == 0) revert GiveErrors.InvalidConfiguration();
+        address user = msg.sender;
+        _accruePending(s, vault, asset, user);
 
-        YieldTotals memory totals =
-            _distributeLoop(s, token, campaignId, campaign.payoutRecipient, msg.sender, totalYield, totalShares);
-
-        if (totals.protocol > 0) {
-            token.safeTransfer(s.protocolTreasury, totals.protocol);
-            s.campaignProtocolFees[campaignId] += totals.protocol;
+        uint256 userYield = s.pendingYield[vault][asset][user];
+        if (userYield == 0) {
+            return 0;
         }
 
-        if (totals.campaign > 0) {
-            token.safeTransfer(campaign.payoutRecipient, totals.campaign);
-            s.campaignTotalPayouts[campaignId] += totals.campaign;
+        s.pendingYield[vault][asset][user] = 0;
+
+        GiveTypes.CampaignPreference storage pref = s.userPreferences[user][vault];
+        if (pref.campaignId != bytes32(0) && pref.campaignId != campaignId) {
+            delete s.userPreferences[user][vault];
+            emit StalePrefCleared(user, vault);
         }
 
-        s.totalDistributions += 1;
+        uint256 campaignAmount;
+        uint256 beneficiaryAmount;
+        uint256 protocolAmount;
+        address beneficiary;
+        (campaignAmount, beneficiaryAmount, protocolAmount, beneficiary) =
+            _calculateAllocations(s, campaignId, campaign.payoutRecipient, user, vault, userYield);
 
-        emit CampaignPayoutExecuted(campaignId, msg.sender, campaign.payoutRecipient, totals.campaign, totals.protocol);
+        IERC20 token = IERC20(asset);
 
-        return totals.campaign + totals.beneficiary + totals.protocol;
+        if (protocolAmount > 0) {
+            token.safeTransfer(s.protocolTreasury, protocolAmount);
+            s.campaignProtocolFees[campaignId] += protocolAmount;
+        }
+
+        if (campaignAmount > 0) {
+            token.safeTransfer(campaign.payoutRecipient, campaignAmount);
+            s.campaignTotalPayouts[campaignId] += campaignAmount;
+        }
+
+        if (beneficiaryAmount > 0) {
+            token.safeTransfer(beneficiary, beneficiaryAmount);
+            emit BeneficiaryPaid(user, vault, beneficiary, beneficiaryAmount);
+        }
+
+        emit CampaignPayoutExecuted(campaignId, vault, campaign.payoutRecipient, campaignAmount, protocolAmount);
+        emit YieldClaimed(user, vault, asset, campaignAmount, beneficiaryAmount, protocolAmount);
+
+        return campaignAmount + beneficiaryAmount + protocolAmount;
     }
 
     function emergencyWithdraw(address asset, address recipient, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -471,63 +549,34 @@ contract PayoutRouter is
         }
     }
 
-    function _distributeLoop(
-        GiveTypes.PayoutRouterState storage s,
-        IERC20 token,
-        bytes32 campaignId,
-        address payoutRecipient,
-        address vault,
-        uint256 totalYield,
-        uint256 totalShares
-    ) private returns (YieldTotals memory totals) {
-        for (uint256 i = 0; i < s.vaultShareholders[vault].length; i++) {
-            address user = s.vaultShareholders[vault][i];
-            uint256 userShares = s.userVaultShares[user][vault];
-            if (userShares == 0) continue;
-
-            uint256 userYield = (totalYield * userShares) / totalShares;
-            if (userYield == 0) continue;
-
-            (uint256 campaignAmt, uint256 benefAmt, uint256 protocolAmt) =
-                _processUserYield(s, token, campaignId, payoutRecipient, vault, user, userYield);
-
-            totals.campaign += campaignAmt;
-            totals.beneficiary += benefAmt;
-            totals.protocol += protocolAmt;
+    function _syncUserPendingAcrossAssets(GiveTypes.PayoutRouterState storage s, address vault, address user) private {
+        address[] storage assets = s.vaultAssets[vault];
+        for (uint256 i = 0; i < assets.length; i++) {
+            _accruePending(s, vault, assets[i], user);
         }
     }
 
-    function _processUserYield(
-        GiveTypes.PayoutRouterState storage s,
-        IERC20 token,
-        bytes32 campaignId,
-        address payoutRecipient,
-        address vault,
-        address user,
-        uint256 userYield
-    ) private returns (uint256 campaignAmount, uint256 beneficiaryAmount, uint256 protocolAmount) {
-        address beneficiary;
-        (campaignAmount, beneficiaryAmount, protocolAmount, beneficiary) =
-            _calculateAllocations(s, campaignId, payoutRecipient, user, vault, userYield);
+    function _accruePending(GiveTypes.PayoutRouterState storage s, address vault, address asset, address user) private {
+        uint256 shares = s.userVaultShares[user][vault];
+        uint256 acc = s.accumulatedYieldPerShare[vault][asset];
+        uint256 debt = s.userYieldDebt[vault][asset][user];
 
-        if (beneficiaryAmount > 0) {
-            token.safeTransfer(beneficiary, beneficiaryAmount);
-            emit BeneficiaryPaid(user, vault, beneficiary, beneficiaryAmount);
-        }
-    }
-
-    function _removeShareholder(GiveTypes.PayoutRouterState storage s, address vault, address user) private {
-        address[] storage holders = s.vaultShareholders[vault];
-        uint256 length = holders.length;
-        for (uint256 i = 0; i < length; i++) {
-            if (holders[i] == user) {
-                if (i != length - 1) {
-                    holders[i] = holders[length - 1];
-                }
-                holders.pop();
-                break;
+        if (shares > 0 && acc > debt) {
+            uint256 accrued = (shares * (acc - debt)) / PRECISION;
+            if (accrued > 0) {
+                s.pendingYield[vault][asset][user] += accrued;
             }
         }
+
+        s.userYieldDebt[vault][asset][user] = acc;
+    }
+
+    function _registerVaultAsset(GiveTypes.PayoutRouterState storage s, address vault, address asset) private {
+        if (s.hasVaultAsset[vault][asset]) {
+            return;
+        }
+        s.hasVaultAsset[vault][asset] = true;
+        s.vaultAssets[vault].push(asset);
     }
 
     function _requireCampaignForVault(GiveTypes.PayoutRouterState storage s, address vault)
