@@ -27,11 +27,7 @@ contract InvariantPayoutRouter is Test {
     /// @notice Total yield claimed by all actors must never exceed total yield recorded.
     ///         Violated if claimYield pays out more tokens than were deposited via recordYield.
     function invariant_claimed_never_exceeds_recorded() public view {
-        assertLe(
-            handler.ghost_totalClaimed(),
-            handler.ghost_totalRecorded(),
-            "I1: claimed > recorded"
-        );
+        assertLe(handler.ghost_totalClaimed(), handler.ghost_totalRecorded(), "I1: claimed > recorded");
     }
 
     // ── I2 ───────────────────────────────────────────────────────────
@@ -43,11 +39,7 @@ contract InvariantPayoutRouter is Test {
         uint256 recorded = handler.ghost_totalRecorded();
         uint256 claimed = handler.ghost_totalClaimed();
         uint256 undistributed = recorded >= claimed ? recorded - claimed : 0;
-        assertGe(
-            handler.routerBalance(),
-            undistributed,
-            "I2: router balance < undistributed yield"
-        );
+        assertGe(handler.routerBalance(), undistributed, "I2: router balance < undistributed yield");
     }
 
     // ── I3 ───────────────────────────────────────────────────────────
@@ -77,11 +69,12 @@ contract InvariantPayoutRouter is Test {
     function invariant_pending_bounded_by_recorded() public view {
         uint256 totalPending;
         for (uint8 i = 0; i < 3; i++) {
-            totalPending += handler.router().getPendingYield(
-                handler.actor(i),
-                address(handler),   // handler IS the vault
-                address(handler.asset())
-            );
+            totalPending += handler.router()
+                .getPendingYield(
+                    handler.actor(i),
+                    address(handler), // handler IS the vault
+                    address(handler.asset())
+                );
         }
         // Allow 1 wei rounding dust per actor (integer division in accumulator math)
         uint256 dust = 3;

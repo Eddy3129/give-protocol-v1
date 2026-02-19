@@ -116,7 +116,8 @@ contract PendleAdapter is AdapterBase {
             ptToken.forceApprove(router, 0);
             ptToken.forceApprove(router, ptBalance);
 
-            (returned,,) = IPActionSwapPTV3(router).swapExactPtForToken(address(this), market, ptBalance, output, emptyLimit);
+            (returned,,) =
+                IPActionSwapPTV3(router).swapExactPtForToken(address(this), market, ptBalance, output, emptyLimit);
         }
 
         uint256 idleBalance = asset().balanceOf(address(this));

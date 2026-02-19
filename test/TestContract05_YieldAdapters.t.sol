@@ -190,7 +190,11 @@ contract TestContract05_YieldAdapters is Test {
     }
 
     function test_Contract05_Case09b_PTAdapter_invalidSeriesReverts() public {
-        vm.expectRevert(abi.encodeWithSelector(PTAdapter.InvalidSeriesWindow.selector, uint64(block.timestamp), uint64(block.timestamp)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PTAdapter.InvalidSeriesWindow.selector, uint64(block.timestamp), uint64(block.timestamp)
+            )
+        );
         new PTAdapter(ADAPTER_ID, address(asset), vault, uint64(block.timestamp), uint64(block.timestamp));
     }
 

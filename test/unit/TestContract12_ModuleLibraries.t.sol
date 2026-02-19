@@ -178,7 +178,8 @@ contract TestContract12_ModuleLibraries is Test {
         core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Pause, bytes(""));
         assertTrue(mockVault.emergencyPaused());
 
-        EmergencyModule.EmergencyWithdrawParams memory params = EmergencyModule.EmergencyWithdrawParams({clearAdapter: true});
+        EmergencyModule.EmergencyWithdrawParams memory params =
+            EmergencyModule.EmergencyWithdrawParams({clearAdapter: true});
         vm.prank(emergencyManager);
         core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Withdraw, abi.encode(params));
 

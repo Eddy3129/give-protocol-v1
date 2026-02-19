@@ -295,12 +295,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
 
         if (pendleRouter != address(0) && pendleMarket != address(0) && pendlePt != address(0)) {
             pendleUsdcAdapter = new PendleAdapter(
-                pendleUsdcAdapterId,
-                usdcToken,
-                address(usdcVault),
-                pendleRouter,
-                pendleMarket,
-                pendlePt
+                pendleUsdcAdapterId, usdcToken, address(usdcVault), pendleRouter, pendleMarket, pendlePt
             );
 
             console.log("Pendle USDC Adapter:", address(pendleUsdcAdapter));
@@ -308,7 +303,9 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
             saveDeployment("PendleUSDCAdapter", address(pendleUsdcAdapter));
             saveDeploymentBytes32("PendleUSDCAdapterId", pendleUsdcAdapterId);
         } else {
-            console.log("Skipping Pendle adapter (PENDLE_ROUTER_ADDRESS / PENDLE_MARKET_ADDRESS / PENDLE_PT_ADDRESS not set)");
+            console.log(
+                "Skipping Pendle adapter (PENDLE_ROUTER_ADDRESS / PENDLE_MARKET_ADDRESS / PENDLE_PT_ADDRESS not set)"
+            );
         }
 
         // ========================================

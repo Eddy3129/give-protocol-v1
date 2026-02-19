@@ -16,25 +16,34 @@ import {GiveTypes} from "../../src/types/GiveTypes.sol";
 // ── Minimal mocks (reuse pattern from unit tests) ───────────────────────────
 
 contract ForkMockACL {
-    function hasRole(bytes32, address) external pure returns (bool) { return false; }
+    function hasRole(bytes32, address) external pure returns (bool) {
+        return false;
+    }
 }
 
 contract ForkMockCampaignRegistry {
     address public immutable payoutRecipient;
-    constructor(address r) { payoutRecipient = r; }
+
+    constructor(address r) {
+        payoutRecipient = r;
+    }
+
     function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
         uint256[49] memory gap;
-        cfg.id = id; cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active; cfg.exists = true; cfg.__gap = gap;
+        cfg.id = id;
+        cfg.payoutRecipient = payoutRecipient;
+        cfg.status = GiveTypes.CampaignStatus.Active;
+        cfg.exists = true;
+        cfg.__gap = gap;
     }
 }
 
 /// @title GiveVaultForkTest
 /// @notice Full end-to-end vault cycle against live Aave V3 on Base mainnet.
 contract GiveVaultForkTest is ForkBase {
-    GiveVault4626  internal vault;
-    AaveAdapter    internal adapter;
-    PayoutRouter   internal router;
+    GiveVault4626 internal vault;
+    AaveAdapter internal adapter;
+    PayoutRouter internal router;
 
     IERC20 internal usdc;
     IERC20 internal ausdc;
@@ -50,11 +59,11 @@ contract GiveVaultForkTest is ForkBase {
         super.setUp();
         if (!_forkActive) return;
 
-        usdc  = IERC20(ForkAddresses.USDC);
+        usdc = IERC20(ForkAddresses.USDC);
         ausdc = IERC20(ForkAddresses.AUSDC);
 
-        admin    = makeAddr("fork_admin");
-        ngo      = makeAddr("fork_ngo");
+        admin = makeAddr("fork_admin");
+        ngo = makeAddr("fork_ngo");
         donors[0] = makeAddr("fork_donor0");
         donors[1] = makeAddr("fork_donor1");
         donors[2] = makeAddr("fork_donor2");
@@ -65,14 +74,9 @@ contract GiveVaultForkTest is ForkBase {
 
         vault = new GiveVault4626();
         vm.prank(admin);
-        vault.initialize(
-            ForkAddresses.USDC, "Give USDC Vault", "gUSDC",
-            admin, address(acl), address(vault)
-        );
+        vault.initialize(ForkAddresses.USDC, "Give USDC Vault", "gUSDC", admin, address(acl), address(vault));
 
-        adapter = new AaveAdapter(
-            ForkAddresses.USDC, address(vault), ForkAddresses.AAVE_POOL, admin
-        );
+        adapter = new AaveAdapter(ForkAddresses.USDC, address(vault), ForkAddresses.AAVE_POOL, admin);
 
         router = new PayoutRouter();
         vm.startPrank(admin);
@@ -169,13 +173,9 @@ contract GiveVaultForkTest is ForkBase {
         vault.deposit(DEPOSIT, donors[0]);
         vm.stopPrank();
 
-        uint256 vaultCash     = usdc.balanceOf(address(vault));
+        uint256 vaultCash = usdc.balanceOf(address(vault));
         uint256 adapterAssets = adapter.totalAssets();
 
-        assertEq(
-            vault.totalAssets(),
-            vaultCash + adapterAssets,
-            "totalAssets() != cash + adapter"
-        );
+        assertEq(vault.totalAssets(), vaultCash + adapterAssets, "totalAssets() != cash + adapter");
     }
 }

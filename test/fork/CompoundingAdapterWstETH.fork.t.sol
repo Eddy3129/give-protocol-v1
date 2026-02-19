@@ -47,7 +47,11 @@ contract CompoundingAdapterWstETHForkTest is ForkBase {
 
         assertEq(profit, 0, "no profit expected without token-balance increase");
         assertEq(loss, 0, "compounding adapter should not report loss here");
-        assertEq(wsteth.balanceOf(address(this)), vaultBalanceBefore, "vault should not receive tokens on zero-profit harvest");
+        assertEq(
+            wsteth.balanceOf(address(this)),
+            vaultBalanceBefore,
+            "vault should not receive tokens on zero-profit harvest"
+        );
     }
 
     function test_harvest_transfers_profit_when_adapter_balance_increases() public requiresFork {

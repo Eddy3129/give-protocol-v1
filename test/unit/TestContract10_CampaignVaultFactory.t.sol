@@ -136,7 +136,13 @@ contract TestContract10_CampaignVaultFactory is Test {
         campaignRegistry.setConfiguredStrategy(strategyId);
 
         factory = new CampaignVaultFactory();
-        factory.initialize(address(acl), address(campaignRegistry), address(strategyRegistry), address(payoutRouter), address(vaultImpl));
+        factory.initialize(
+            address(acl),
+            address(campaignRegistry),
+            address(strategyRegistry),
+            address(payoutRouter),
+            address(vaultImpl)
+        );
     }
 
     function _params() private returns (CampaignVaultFactory.DeployParams memory params) {

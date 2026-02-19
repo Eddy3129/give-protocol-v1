@@ -12,16 +12,25 @@ import {GiveTypes} from "../../src/types/GiveTypes.sol";
 // ── Minimal mocks ────────────────────────────────────────────────────────────
 
 contract GasMockACL {
-    function hasRole(bytes32, address) external pure returns (bool) { return false; }
+    function hasRole(bytes32, address) external pure returns (bool) {
+        return false;
+    }
 }
 
 contract GasMockCampaignRegistry {
     address public immutable payoutRecipient;
-    constructor(address r) { payoutRecipient = r; }
+
+    constructor(address r) {
+        payoutRecipient = r;
+    }
+
     function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
         uint256[49] memory gap;
-        cfg.id = id; cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active; cfg.exists = true; cfg.__gap = gap;
+        cfg.id = id;
+        cfg.payoutRecipient = payoutRecipient;
+        cfg.status = GiveTypes.CampaignStatus.Active;
+        cfg.exists = true;
+        cfg.__gap = gap;
     }
 }
 
@@ -37,7 +46,7 @@ contract GasMockCampaignRegistry {
 ///         model has regressed to a loop-based path — file as critical.
 contract PayoutRouterGasForkTest is ForkBase {
     PayoutRouter internal router;
-    MockERC20    internal asset;
+    MockERC20 internal asset;
 
     address internal admin;
     address internal ngo;
@@ -46,8 +55,8 @@ contract PayoutRouterGasForkTest is ForkBase {
     bytes32 internal constant CAMPAIGN_ID = keccak256("gas_campaign");
 
     // Gas ceilings confirmed against accumulator implementation
-    uint256 internal constant RECORD_YIELD_GAS_CEILING  = 200_000;
-    uint256 internal constant CLAIM_YIELD_GAS_CEILING   = 350_000;
+    uint256 internal constant RECORD_YIELD_GAS_CEILING = 200_000;
+    uint256 internal constant CLAIM_YIELD_GAS_CEILING = 350_000;
 
     // Depositor counts to sweep — gas must be flat across all
     uint256[4] internal DEPOSITOR_COUNTS = [uint256(10), 50, 100, 200];
@@ -56,8 +65,8 @@ contract PayoutRouterGasForkTest is ForkBase {
         super.setUp();
         if (!_forkActive) return;
 
-        admin     = makeAddr("gas_admin");
-        ngo       = makeAddr("gas_ngo");
+        admin = makeAddr("gas_admin");
+        ngo = makeAddr("gas_ngo");
         vaultAddr = address(this); // this contract is the authorized vault
 
         asset = new MockERC20("USDC", "USDC", 6);
@@ -130,10 +139,7 @@ contract PayoutRouterGasForkTest is ForkBase {
                 string(abi.encodePacked("recordYield gas exceeded ceiling at n=", vm.toString(n)))
             );
 
-            emit log_named_uint(
-                string(abi.encodePacked("recordYield gas (n=", vm.toString(n), ")")),
-                gasUsed[j]
-            );
+            emit log_named_uint(string(abi.encodePacked("recordYield gas (n=", vm.toString(n), ")")), gasUsed[j]);
         }
 
         // Confirm flatness: max - min across counts must be within 10%
@@ -172,9 +178,7 @@ contract PayoutRouterGasForkTest is ForkBase {
             address claimer = makeAddr("claimer");
             freshRouter.updateUserShares(claimer, 1_000e6);
             for (uint256 i = 0; i < n - 1; i++) {
-                freshRouter.updateUserShares(
-                    makeAddr(string(abi.encodePacked("c_actor_", i))), 1_000e6
-                );
+                freshRouter.updateUserShares(makeAddr(string(abi.encodePacked("c_actor_", i))), 1_000e6);
             }
 
             asset.mint(address(this), yieldAmount);
@@ -192,10 +196,7 @@ contract PayoutRouterGasForkTest is ForkBase {
                 string(abi.encodePacked("claimYield gas exceeded ceiling at n=", vm.toString(n)))
             );
 
-            emit log_named_uint(
-                string(abi.encodePacked("claimYield gas (n=", vm.toString(n), ")")),
-                gasUsed[j]
-            );
+            emit log_named_uint(string(abi.encodePacked("claimYield gas (n=", vm.toString(n), ")")), gasUsed[j]);
         }
 
         // Confirm flatness
@@ -206,9 +207,7 @@ contract PayoutRouterGasForkTest is ForkBase {
             if (gasUsed[j] > maxGas) maxGas = gasUsed[j];
         }
         assertLe(
-            maxGas - minGas,
-            minGas / 4,
-            "claimYield gas is not flat across depositor counts - loop regression detected"
+            maxGas - minGas, minGas / 4, "claimYield gas is not flat across depositor counts - loop regression detected"
         );
     }
 }

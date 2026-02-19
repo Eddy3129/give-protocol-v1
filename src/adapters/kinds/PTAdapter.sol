@@ -45,7 +45,9 @@ contract PTAdapter is AdapterBase {
     error InsufficientAdapterBalance(uint256 required, uint256 available);
 
     event SeriesConfigured(uint64 indexed start, uint64 indexed maturity);
-    event SeriesRollover(uint64 indexed oldStart, uint64 indexed oldMaturity, uint64 indexed newStart, uint64 newMaturity);
+    event SeriesRollover(
+        uint64 indexed oldStart, uint64 indexed oldMaturity, uint64 indexed newStart, uint64 newMaturity
+    );
 
     // ============================================
     // STRUCTS

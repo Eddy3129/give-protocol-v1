@@ -245,10 +245,7 @@ contract CheckpointVotingForkTest is ForkBase {
         uint64 windowEnd = nowTs + 172_800;
 
         CampaignRegistry.CheckpointInput memory input = CampaignRegistry.CheckpointInput({
-            windowStart: windowStart,
-            windowEnd: windowEnd,
-            executionDeadline: windowEnd + 86_400,
-            quorumBps: quorumBps
+            windowStart: windowStart, windowEnd: windowEnd, executionDeadline: windowEnd + 86_400, quorumBps: quorumBps
         });
 
         vm.prank(admin);

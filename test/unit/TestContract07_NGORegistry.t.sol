@@ -59,9 +59,7 @@ contract TestContract07_NGORegistry is Test {
         (
             string memory metadataCid,
             bytes32 storedKycHash,
-            address storedAttestor,
-            ,
-            ,
+            address storedAttestor,,,
             uint256 version,
             uint256 totalReceived,
             bool isActive

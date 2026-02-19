@@ -39,21 +39,9 @@ contract DepositETHForkTest is ForkBase {
 
         vault = new GiveVault4626();
         vm.prank(admin);
-        vault.initialize(
-            ForkAddresses.WETH,
-            "Give WETH Vault",
-            "gWETH",
-            admin,
-            address(acl),
-            address(vault)
-        );
+        vault.initialize(ForkAddresses.WETH, "Give WETH Vault", "gWETH", admin, address(acl), address(vault));
 
-        adapter = new AaveAdapter(
-            ForkAddresses.WETH,
-            address(vault),
-            ForkAddresses.AAVE_POOL,
-            admin
-        );
+        adapter = new AaveAdapter(ForkAddresses.WETH, address(vault), ForkAddresses.AAVE_POOL, admin);
 
         vm.startPrank(admin);
         vault.setActiveAdapter(IYieldAdapter(address(adapter)));
@@ -71,9 +59,7 @@ contract DepositETHForkTest is ForkBase {
 
         assertGt(shares, 0, "no shares minted");
         assertEq(
-            IERC20(ForkAddresses.WETH).balanceOf(address(vault)),
-            0,
-            "vault should not retain WETH with 0 cash buffer"
+            IERC20(ForkAddresses.WETH).balanceOf(address(vault)), 0, "vault should not retain WETH with 0 cash buffer"
         );
         assertGt(adapter.totalAssets(), aTokenBefore, "adapter did not receive invested WETH");
 
@@ -117,14 +103,7 @@ contract DepositETHForkTest is ForkBase {
         GiveVault4626 freshVault = new GiveVault4626();
 
         vm.prank(admin);
-        freshVault.initialize(
-            ForkAddresses.WETH,
-            "Give WETH Vault",
-            "gWETH",
-            admin,
-            address(acl),
-            address(freshVault)
-        );
+        freshVault.initialize(ForkAddresses.WETH, "Give WETH Vault", "gWETH", admin, address(acl), address(freshVault));
 
         vm.deal(receiver, DEPOSIT_AMOUNT);
         vm.prank(receiver);
@@ -139,11 +118,7 @@ contract DepositETHForkTest is ForkBase {
 
         vm.prank(receiver);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GiveVault4626.SlippageExceeded.selector,
-                type(uint256).max,
-                expectedShares
-            )
+            abi.encodeWithSelector(GiveVault4626.SlippageExceeded.selector, type(uint256).max, expectedShares)
         );
         vault.depositETH{value: DEPOSIT_AMOUNT}(receiver, type(uint256).max);
     }

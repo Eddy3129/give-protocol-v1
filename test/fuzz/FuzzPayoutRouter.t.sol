@@ -91,7 +91,9 @@ contract FuzzPayoutRouter is Test {
         vm.stopPrank();
     }
 
-    function testFuzz_distribution_no_leakage(uint256 totalYield, uint8 numHolders, uint256[16] calldata shares) public {
+    function testFuzz_distribution_no_leakage(uint256 totalYield, uint8 numHolders, uint256[16] calldata shares)
+        public
+    {
         uint256 holderCount = bound(uint256(numHolders), 1, 16);
         uint256 boundedYield = bound(totalYield, 1e6, 50_000_000e6);
 

@@ -23,11 +23,7 @@ contract PTAdapterPendleBlockerForkTest is ForkBase {
 
         usdc = IERC20(ForkAddresses.USDC);
         adapter = new PTAdapter(
-            ADAPTER_ID,
-            ForkAddresses.USDC,
-            address(this),
-            uint64(block.timestamp),
-            uint64(block.timestamp + 180 days)
+            ADAPTER_ID, ForkAddresses.USDC, address(this), uint64(block.timestamp), uint64(block.timestamp + 180 days)
         );
     }
 

@@ -8,7 +8,7 @@
     "test:verbose": "forge fmt && forge test -vvv",
     "test:gas": "forge fmt && forge test --gas-report",
     "coverage": "forge fmt && forge coverage",
-    "lint": "forge fmt --check",
+    "lint": "forge fmt --check && forge lint",
     "lint:fix": "forge fmt",
     "clean": "forge clean"
   },

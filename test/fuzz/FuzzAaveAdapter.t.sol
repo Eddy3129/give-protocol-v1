@@ -31,7 +31,7 @@ contract FuzzAaveAdapter is Test {
 
         usdc.mint(vault, boundedAssets);
         vm.prank(vault);
-        usdc.transfer(address(adapter), boundedAssets);
+        require(usdc.transfer(address(adapter), boundedAssets), "transfer failed");
 
         vm.prank(vault);
         adapter.invest(boundedAssets);
@@ -49,7 +49,7 @@ contract FuzzAaveAdapter is Test {
 
         usdc.mint(vault, boundedPrincipal);
         vm.prank(vault);
-        usdc.transfer(address(adapter), boundedPrincipal);
+        require(usdc.transfer(address(adapter), boundedPrincipal), "transfer failed");
 
         vm.prank(vault);
         adapter.invest(boundedPrincipal);

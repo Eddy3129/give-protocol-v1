@@ -30,8 +30,7 @@ contract InvariantCampaignRegistry is Test {
     function invariant_deposit_zeroed_after_decision() public view {
         if (!handler.ghost_campaignDecided()) return;
 
-        GiveTypes.CampaignConfig memory cfg =
-            handler.registry().getCampaign(handler.CAMPAIGN_ID());
+        GiveTypes.CampaignConfig memory cfg = handler.registry().getCampaign(handler.CAMPAIGN_ID());
 
         assertEq(cfg.initialDeposit, 0, "I1: initialDeposit != 0 after approve/reject");
     }
@@ -46,17 +45,11 @@ contract InvariantCampaignRegistry is Test {
     function invariant_stake_accounting_consistent() public view {
         if (!handler.ghost_campaignDecided()) return;
 
-        GiveTypes.CampaignConfig memory cfg =
-            handler.registry().getCampaign(handler.CAMPAIGN_ID());
+        GiveTypes.CampaignConfig memory cfg = handler.registry().getCampaign(handler.CAMPAIGN_ID());
 
-        uint256 expectedTotalStaked =
-            handler.ghost_totalActive() + handler.ghost_totalPendingExit();
+        uint256 expectedTotalStaked = handler.ghost_totalActive() + handler.ghost_totalPendingExit();
 
-        assertEq(
-            cfg.totalStaked,
-            expectedTotalStaked,
-            "I2: totalStaked != ghost_totalActive + ghost_totalPendingExit"
-        );
+        assertEq(cfg.totalStaked, expectedTotalStaked, "I2: totalStaked != ghost_totalActive + ghost_totalPendingExit");
     }
 
     // ── I3 ───────────────────────────────────────────────────────────
@@ -67,14 +60,10 @@ contract InvariantCampaignRegistry is Test {
     function invariant_payouts_halted_only_on_failed_checkpoint() public view {
         if (!handler.ghost_campaignDecided()) return;
 
-        GiveTypes.CampaignConfig memory cfg =
-            handler.registry().getCampaign(handler.CAMPAIGN_ID());
+        GiveTypes.CampaignConfig memory cfg = handler.registry().getCampaign(handler.CAMPAIGN_ID());
 
         if (cfg.payoutsHalted) {
-            assertTrue(
-                handler.ghost_hasFailedCheckpoint(),
-                "I3: payoutsHalted=true but no Failed checkpoint recorded"
-            );
+            assertTrue(handler.ghost_hasFailedCheckpoint(), "I3: payoutsHalted=true but no Failed checkpoint recorded");
         }
     }
 
@@ -91,8 +80,7 @@ contract InvariantCampaignRegistry is Test {
 
         for (uint8 i = 0; i < 3; i++) {
             address staker_ = handler.staker(i);
-            GiveTypes.SupporterStake memory pos =
-                handler.registry().getStakePosition(handler.CAMPAIGN_ID(), staker_);
+            GiveTypes.SupporterStake memory pos = handler.registry().getStakePosition(handler.CAMPAIGN_ID(), staker_);
 
             // A staker marked exists=true must have some stake or pending withdrawal
             if (pos.exists) {

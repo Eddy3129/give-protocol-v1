@@ -29,17 +29,11 @@ contract InvariantVault is Test {
     ///         With no adapter, all assets remain as vault cash:
     ///         totalAssets = deposited + yieldInjected - withdrawn (exact).
     function invariant_total_assets_equals_net_flows() public view {
-        uint256 netIn = handler.ghost_totalDeposited()
-            + handler.ghost_totalYieldInjected()
-            - handler.ghost_totalWithdrawn();
+        uint256 netIn =
+            handler.ghost_totalDeposited() + handler.ghost_totalYieldInjected() - handler.ghost_totalWithdrawn();
 
         // Allow 1 wei for OZ ERC4626 virtual share rounding
-        assertApproxEqAbs(
-            handler.vault().totalAssets(),
-            netIn,
-            1,
-            "I1: totalAssets != net asset flows"
-        );
+        assertApproxEqAbs(handler.vault().totalAssets(), netIn, 1, "I1: totalAssets != net asset flows");
     }
 
     // ── I2 ───────────────────────────────────────────────────────────
@@ -84,10 +78,6 @@ contract InvariantVault is Test {
 
         // vault.decimals() matches asset decimals (OZ ERC4626, decimalsOffset = 0)
         uint256 unit = 10 ** handler.vault().decimals();
-        assertGe(
-            handler.vault().previewRedeem(unit),
-            unit,
-            "I4: share price fell below 1:1"
-        );
+        assertGe(handler.vault().previewRedeem(unit), unit, "I4: share price fell below 1:1");
     }
 }

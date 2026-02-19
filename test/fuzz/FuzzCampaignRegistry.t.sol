@@ -181,10 +181,7 @@ contract FuzzCampaignRegistry is Test {
         registry.scheduleCheckpoint(
             campaignId,
             CampaignRegistry.CheckpointInput({
-                windowStart: start,
-                windowEnd: end,
-                executionDeadline: uint64(end + 1 days),
-                quorumBps: 5_000
+                windowStart: start, windowEnd: end, executionDeadline: uint64(end + 1 days), quorumBps: 5_000
             })
         );
 
@@ -230,10 +227,7 @@ contract FuzzCampaignRegistry is Test {
         registry.scheduleCheckpoint(
             campaignId,
             CampaignRegistry.CheckpointInput({
-                windowStart: start,
-                windowEnd: end,
-                executionDeadline: uint64(end + 1 days),
-                quorumBps: boundedQuorum
+                windowStart: start, windowEnd: end, executionDeadline: uint64(end + 1 days), quorumBps: boundedQuorum
             })
         );
 

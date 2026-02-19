@@ -13,24 +13,24 @@ contract AaveAdapterForkTest is ForkBase {
     AaveAdapter internal adapter;
 
     address internal admin;
-    IERC20  internal usdc;
-    IERC20  internal ausdc;
+    IERC20 internal usdc;
+    IERC20 internal ausdc;
 
-    uint256 internal constant INVEST_AMOUNT    = 10_000e6;
+    uint256 internal constant INVEST_AMOUNT = 10_000e6;
     uint256 internal constant MAX_SLIPPAGE_BPS = 100; // 1%
 
     function setUp() public override {
         super.setUp();
         if (!_forkActive) return;
 
-        admin  = makeAddr("adapter_admin");
-        usdc   = IERC20(ForkAddresses.USDC);
-        ausdc  = IERC20(ForkAddresses.AUSDC);
+        admin = makeAddr("adapter_admin");
+        usdc = IERC20(ForkAddresses.USDC);
+        ausdc = IERC20(ForkAddresses.AUSDC);
 
         // This test contract IS the vault — it holds VAULT_ROLE on the adapter
         adapter = new AaveAdapter(
             ForkAddresses.USDC,
-            address(this),           // vault = this
+            address(this), // vault = this
             ForkAddresses.AAVE_POOL,
             admin
         );
@@ -57,11 +57,7 @@ contract AaveAdapterForkTest is ForkBase {
 
     function test_total_assets_equals_ausdc_balance() public requiresFork {
         _invest(INVEST_AMOUNT);
-        assertEq(
-            adapter.totalAssets(),
-            ausdc.balanceOf(address(adapter)),
-            "totalAssets() != aToken balance"
-        );
+        assertEq(adapter.totalAssets(), ausdc.balanceOf(address(adapter)), "totalAssets() != aToken balance");
     }
 
     function test_harvest_accrues_real_yield_after_30_days() public requiresFork {
@@ -75,11 +71,7 @@ contract AaveAdapterForkTest is ForkBase {
 
         assertGt(profit, 0, "no yield after 30 days");
         assertEq(loss, 0, "unexpected loss from Aave");
-        assertGt(
-            usdc.balanceOf(address(this)),
-            vaultUsdcBefore,
-            "profit not transferred to vault"
-        );
+        assertGt(usdc.balanceOf(address(this)), vaultUsdcBefore, "profit not transferred to vault");
         // aToken balance should now equal principal (profit withdrawn)
         assertApproxEqAbs(
             ausdc.balanceOf(address(adapter)),
@@ -138,10 +130,7 @@ contract AaveAdapterForkTest is ForkBase {
 
         // totalInvested should equal aToken balance after harvest
         assertApproxEqAbs(
-            investedAfterFirst,
-            aTokenAfterFirst,
-            1,
-            "totalInvested drifted from aToken balance after first harvest"
+            investedAfterFirst, aTokenAfterFirst, 1, "totalInvested drifted from aToken balance after first harvest"
         );
 
         vm.warp(block.timestamp + 15 days);
@@ -151,10 +140,7 @@ contract AaveAdapterForkTest is ForkBase {
         uint256 aTokenAfterSecond = ausdc.balanceOf(address(adapter));
 
         assertApproxEqAbs(
-            investedAfterSecond,
-            aTokenAfterSecond,
-            1,
-            "totalInvested drifted from aToken balance after second harvest"
+            investedAfterSecond, aTokenAfterSecond, 1, "totalInvested drifted from aToken balance after second harvest"
         );
     }
 }

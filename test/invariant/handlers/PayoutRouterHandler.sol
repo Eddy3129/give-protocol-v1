@@ -88,9 +88,7 @@ contract PayoutRouterHandler is Test {
         router = new PayoutRouter();
 
         vm.startPrank(_admin);
-        router.initialize(
-            _admin, address(acl), address(registry), _admin, _admin, FEE_BPS
-        );
+        router.initialize(_admin, address(acl), address(registry), _admin, _admin, FEE_BPS);
         router.grantRole(router.VAULT_MANAGER_ROLE(), _admin);
         router.grantRole(router.FEE_MANAGER_ROLE(), _admin);
         // Register this handler contract as the authorized vault
@@ -124,7 +122,7 @@ contract PayoutRouterHandler is Test {
 
         // Mint tokens to this handler then forward to router (simulates harvest transfer)
         asset.mint(address(this), amount);
-        asset.transfer(address(router), amount);
+        require(asset.transfer(address(router), amount), "transfer failed");
 
         // Snapshot pending before recording
         _snapshotPending();
@@ -177,15 +175,13 @@ contract PayoutRouterHandler is Test {
 
     function _snapshotPending() internal {
         for (uint256 i = 0; i < 3; i++) {
-            _pendingSnapshot[i] =
-                router.getPendingYield(_actors[i], address(this), address(asset));
+            _pendingSnapshot[i] = router.getPendingYield(_actors[i], address(this), address(asset));
         }
     }
 
     function _checkMonotonicAfterUpdate() internal {
         for (uint256 i = 0; i < 3; i++) {
-            uint256 after_ =
-                router.getPendingYield(_actors[i], address(this), address(asset));
+            uint256 after_ = router.getPendingYield(_actors[i], address(this), address(asset));
             // Pending must not decrease: updateUserShares accrues before changing shares
             if (after_ < _pendingSnapshot[i]) {
                 ghost_accumulatorDecreased = true;
@@ -196,8 +192,7 @@ contract PayoutRouterHandler is Test {
     function _checkMonotonicAfterRecord() internal {
         for (uint256 i = 0; i < 3; i++) {
             uint256 shares = router.getUserVaultShares(_actors[i], address(this));
-            uint256 after_ =
-                router.getPendingYield(_actors[i], address(this), address(asset));
+            uint256 after_ = router.getPendingYield(_actors[i], address(this), address(asset));
             // Only actors with shares should see pending increase
             if (shares > 0 && after_ < _pendingSnapshot[i]) {
                 ghost_accumulatorDecreased = true;

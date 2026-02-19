@@ -412,12 +412,7 @@ contract PayoutRouter is
 
     // ===== Yield distribution =====
 
-    function recordYield(address asset, uint256 totalYield)
-        external
-        whenNotPaused
-        onlyAuthorized
-        returns (uint256)
-    {
+    function recordYield(address asset, uint256 totalYield) external whenNotPaused onlyAuthorized returns (uint256) {
         if (asset == address(0)) revert GiveErrors.ZeroAddress();
         if (totalYield == 0) revert GiveErrors.InvalidAmount();
 
@@ -448,12 +443,7 @@ contract PayoutRouter is
         return totalYield;
     }
 
-    function claimYield(address vault, address asset)
-        external
-        nonReentrant
-        whenNotPaused
-        returns (uint256)
-    {
+    function claimYield(address vault, address asset) external nonReentrant whenNotPaused returns (uint256) {
         if (asset == address(0)) revert GiveErrors.ZeroAddress();
 
         GiveTypes.PayoutRouterState storage s = _state();
@@ -482,12 +472,7 @@ contract PayoutRouter is
 
         _executeAllocationPayouts(s, asset, campaignId, campaign.payoutRecipient, user, vault, allocation);
         emit YieldClaimed(
-            user,
-            vault,
-            asset,
-            allocation.campaignAmount,
-            allocation.beneficiaryAmount,
-            allocation.protocolAmount
+            user, vault, asset, allocation.campaignAmount, allocation.beneficiaryAmount, allocation.protocolAmount
         );
 
         return allocation.campaignAmount + allocation.beneficiaryAmount + allocation.protocolAmount;
@@ -510,11 +495,7 @@ contract PayoutRouter is
         address user,
         address vault,
         uint256 userYield
-    )
-        private
-        view
-        returns (AllocationResult memory allocation)
-    {
+    ) private view returns (AllocationResult memory allocation) {
         allocation.protocolAmount = (userYield * s.feeBps) / 10_000;
         uint256 netYield = userYield - allocation.protocolAmount;
 

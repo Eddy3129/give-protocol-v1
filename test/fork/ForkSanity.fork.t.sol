@@ -26,11 +26,7 @@ contract ForkSanity is ForkBase {
     }
 
     function test_aave_pool_has_code() public requiresFork {
-        assertGt(
-            ForkAddresses.AAVE_POOL.code.length,
-            0,
-            "Aave V3 pool not deployed at expected address"
-        );
+        assertGt(ForkAddresses.AAVE_POOL.code.length, 0, "Aave V3 pool not deployed at expected address");
     }
 
     function test_usdc_has_code() public requiresFork {
@@ -53,11 +49,7 @@ contract ForkSanity is ForkBase {
 
     function test_ausdc_address_matches_reserve_data() public requiresFork {
         DataTypes.ReserveData memory data = pool.getReserveData(ForkAddresses.USDC);
-        assertEq(
-            data.aTokenAddress,
-            ForkAddresses.AUSDC,
-            "aUSDC address mismatch with ForkAddresses constant"
-        );
+        assertEq(data.aTokenAddress, ForkAddresses.AUSDC, "aUSDC address mismatch with ForkAddresses constant");
     }
 
     function test_deal_usdc_works() public requiresFork {

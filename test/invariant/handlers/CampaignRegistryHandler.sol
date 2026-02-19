@@ -20,14 +20,33 @@ contract CRMockACL is IACLManager {
     bytes32 private constant STRATEGY_ADMIN = keccak256("STRATEGY_ADMIN_ROLE");
     bytes32 private constant ROLE_UPGRADER = keccak256("ROLE_UPGRADER");
 
-    function hasRole(bytes32, address) external pure returns (bool) { return true; }
+    function hasRole(bytes32, address) external pure returns (bool) {
+        return true;
+    }
 
-    function campaignAdminRole() external pure returns (bytes32) { return CAMPAIGN_ADMIN; }
-    function campaignCuratorRole() external pure returns (bytes32) { return CAMPAIGN_CURATOR; }
-    function campaignCreatorRole() external pure returns (bytes32) { return CAMPAIGN_CREATOR; }
-    function checkpointCouncilRole() external pure returns (bytes32) { return CHECKPOINT_COUNCIL; }
-    function protocolAdminRole() external pure returns (bytes32) { return PROTOCOL_ADMIN; }
-    function strategyAdminRole() external pure returns (bytes32) { return STRATEGY_ADMIN; }
+    function campaignAdminRole() external pure returns (bytes32) {
+        return CAMPAIGN_ADMIN;
+    }
+
+    function campaignCuratorRole() external pure returns (bytes32) {
+        return CAMPAIGN_CURATOR;
+    }
+
+    function campaignCreatorRole() external pure returns (bytes32) {
+        return CAMPAIGN_CREATOR;
+    }
+
+    function checkpointCouncilRole() external pure returns (bytes32) {
+        return CHECKPOINT_COUNCIL;
+    }
+
+    function protocolAdminRole() external pure returns (bytes32) {
+        return PROTOCOL_ADMIN;
+    }
+
+    function strategyAdminRole() external pure returns (bytes32) {
+        return STRATEGY_ADMIN;
+    }
 
     // Satisfy interface — unused in invariant tests
     function initialize(address, address) external {}
@@ -36,22 +55,35 @@ contract CRMockACL is IACLManager {
     function revokeRole(bytes32, address) external {}
     function proposeRoleAdmin(bytes32, address) external {}
     function acceptRoleAdmin(bytes32) external {}
-    function roleAdmin(bytes32) external pure returns (address) { return address(0); }
+
+    function roleAdmin(bytes32) external pure returns (address) {
+        return address(0);
+    }
+
     function getRoleMembers(bytes32) external pure returns (address[] memory) {
         return new address[](0);
     }
-    function roleExists(bytes32) external pure returns (bool) { return true; }
+
+    function roleExists(bytes32) external pure returns (bool) {
+        return true;
+    }
+
     function canonicalRoles() external pure returns (bytes32[] memory) {
         return new bytes32[](0);
     }
-    function isCanonicalRole(bytes32) external pure returns (bool) { return true; }
+
+    function isCanonicalRole(bytes32) external pure returns (bool) {
+        return true;
+    }
 }
 
 /// @notice Returns a single valid active strategy for any strategyId.
 contract CRMockStrategyRegistry {
     bytes32 public immutable strategyId;
 
-    constructor(bytes32 sid) { strategyId = sid; }
+    constructor(bytes32 sid) {
+        strategyId = sid;
+    }
 
     function getStrategy(bytes32) external view returns (GiveTypes.StrategyConfig memory cfg) {
         uint256[50] memory gap;
@@ -192,10 +224,7 @@ contract CampaignRegistryHandler is Test {
         uint64 deadline = windowEnd + 1 days;
 
         CampaignRegistry.CheckpointInput memory input = CampaignRegistry.CheckpointInput({
-            windowStart: windowStart,
-            windowEnd: windowEnd,
-            executionDeadline: deadline,
-            quorumBps: quorumBps
+            windowStart: windowStart, windowEnd: windowEnd, executionDeadline: deadline, quorumBps: quorumBps
         });
 
         _checkpointIndex = registry.scheduleCheckpoint(CAMPAIGN_ID, input);
@@ -215,8 +244,7 @@ contract CampaignRegistryHandler is Test {
 
         // Have all stakers vote if they have a stake position
         for (uint256 i = 0; i < 3; i++) {
-            GiveTypes.SupporterStake memory pos =
-                registry.getStakePosition(CAMPAIGN_ID, _stakers[i]);
+            GiveTypes.SupporterStake memory pos = registry.getStakePosition(CAMPAIGN_ID, _stakers[i]);
             if (!pos.exists) continue;
 
             vm.prank(_stakers[i]);
@@ -229,15 +257,14 @@ contract CampaignRegistryHandler is Test {
         if (!_checkpointInVoting) return;
 
         // Warp past the voting window end
-        (,uint64 windowEnd,,,, ) = registry.getCheckpoint(CAMPAIGN_ID, _checkpointIndex);
+        (, uint64 windowEnd,,,,) = registry.getCheckpoint(CAMPAIGN_ID, _checkpointIndex);
         if (block.timestamp <= windowEnd) {
             vm.warp(windowEnd + 1);
         }
 
         registry.finalizeCheckpoint(CAMPAIGN_ID, _checkpointIndex);
 
-        (, , , , GiveTypes.CheckpointStatus status, ) =
-            registry.getCheckpoint(CAMPAIGN_ID, _checkpointIndex);
+        (,,,, GiveTypes.CheckpointStatus status,) = registry.getCheckpoint(CAMPAIGN_ID, _checkpointIndex);
 
         if (status == GiveTypes.CheckpointStatus.Failed) {
             ghost_hasFailedCheckpoint = true;
