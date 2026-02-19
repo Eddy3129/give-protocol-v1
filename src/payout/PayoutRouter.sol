@@ -409,29 +409,8 @@ contract PayoutRouter is
         uint256 totalShares = s.totalVaultShares[msg.sender];
         if (totalShares == 0) revert GiveErrors.InvalidConfiguration();
 
-        address[] storage holders = s.vaultShareholders[msg.sender];
-        YieldTotals memory totals;
-
-        for (uint256 i = 0; i < holders.length; i++) {
-            address user = holders[i];
-            uint256 userShares = s.userVaultShares[user][msg.sender];
-            if (userShares == 0) continue;
-
-            uint256 userYield = (totalYield * userShares) / totalShares;
-            if (userYield == 0) continue;
-
-            (uint256 campaignAmount, uint256 beneficiaryAmount, uint256 protocolAmount, address beneficiary) =
-                _calculateAllocations(s, campaignId, campaign.payoutRecipient, user, msg.sender, userYield);
-
-            totals.campaign += campaignAmount;
-            totals.beneficiary += beneficiaryAmount;
-            totals.protocol += protocolAmount;
-
-            if (beneficiaryAmount > 0) {
-                token.safeTransfer(beneficiary, beneficiaryAmount);
-                emit BeneficiaryPaid(user, msg.sender, beneficiary, beneficiaryAmount);
-            }
-        }
+        YieldTotals memory totals =
+            _distributeLoop(s, token, campaignId, campaign.payoutRecipient, msg.sender, totalYield, totalShares);
 
         if (totals.protocol > 0) {
             token.safeTransfer(s.protocolTreasury, totals.protocol);
@@ -473,7 +452,7 @@ contract PayoutRouter is
         returns (uint256 campaignAmount, uint256 beneficiaryAmount, uint256 protocolAmount, address payoutTo)
     {
         protocolAmount =
-            (userYield * PROTOCOL_FEE_BPS) / 10_000;
+            (userYield * s.feeBps) / 10_000;
         uint256 netYield = userYield - protocolAmount;
 
         GiveTypes.CampaignPreference memory pref = s.userPreferences[user][vault];
@@ -489,6 +468,51 @@ contract PayoutRouter is
 
         if (beneficiaryAmount > 0 && payoutTo == address(0)) {
             payoutTo = s.feeRecipient;
+        }
+    }
+
+    function _distributeLoop(
+        GiveTypes.PayoutRouterState storage s,
+        IERC20 token,
+        bytes32 campaignId,
+        address payoutRecipient,
+        address vault,
+        uint256 totalYield,
+        uint256 totalShares
+    ) private returns (YieldTotals memory totals) {
+        for (uint256 i = 0; i < s.vaultShareholders[vault].length; i++) {
+            address user = s.vaultShareholders[vault][i];
+            uint256 userShares = s.userVaultShares[user][vault];
+            if (userShares == 0) continue;
+
+            uint256 userYield = (totalYield * userShares) / totalShares;
+            if (userYield == 0) continue;
+
+            (uint256 campaignAmt, uint256 benefAmt, uint256 protocolAmt) =
+                _processUserYield(s, token, campaignId, payoutRecipient, vault, user, userYield);
+
+            totals.campaign += campaignAmt;
+            totals.beneficiary += benefAmt;
+            totals.protocol += protocolAmt;
+        }
+    }
+
+    function _processUserYield(
+        GiveTypes.PayoutRouterState storage s,
+        IERC20 token,
+        bytes32 campaignId,
+        address payoutRecipient,
+        address vault,
+        address user,
+        uint256 userYield
+    ) private returns (uint256 campaignAmount, uint256 beneficiaryAmount, uint256 protocolAmount) {
+        address beneficiary;
+        (campaignAmount, beneficiaryAmount, protocolAmount, beneficiary) =
+            _calculateAllocations(s, campaignId, payoutRecipient, user, vault, userYield);
+
+        if (beneficiaryAmount > 0) {
+            token.safeTransfer(beneficiary, beneficiaryAmount);
+            emit BeneficiaryPaid(user, vault, beneficiary, beneficiaryAmount);
         }
     }
 

@@ -126,6 +126,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
     error InvalidAmount();
     error SlippageExceeded(uint256 expected, uint256 actual);
     error TransferFailed();
+    error AdapterHasFunds(uint256 remaining);
     error Unauthorized(bytes32 roleId, address account);
 
     // ============================================
@@ -316,6 +317,10 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
     function forceClearAdapter() external onlyRole(VAULT_MANAGER_ROLE) {
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         address oldAdapter = cfg.activeAdapter;
+        if (oldAdapter != address(0)) {
+            uint256 remaining = IYieldAdapter(oldAdapter).totalAssets();
+            if (remaining != 0) revert AdapterHasFunds(remaining);
+        }
         cfg.activeAdapter = address(0);
         cfg.adapterId = bytes32(0);
         emit AdapterUpdated(oldAdapter, address(0));
@@ -492,8 +497,9 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
     // INTERNAL FUNCTIONS
     // ============================================
 
-    function _investExcessCash() internal whenInvestNotPaused {
+    function _investExcessCash() internal {
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
+        if (cfg.investPaused) return;
         address adapterAddr = cfg.activeAdapter;
         if (adapterAddr == address(0)) return;
 
