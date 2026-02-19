@@ -571,19 +571,31 @@ invariant_share_price_nondecreasing
 ```
 
 **`test/invariant/handlers/PayoutRouterHandler.sol`**
-Actions: `deposit`, `harvest`, `setPreference`, `updateShares`, `emergencyWithdraw`
+Actions: `recordYield`, `claimYield`, `setVaultPreference`, `updateUserShares` (vault=msg.sender),
+         `executeFeeChange`
+
+Note: `vaultShareholders` array was deleted in Phase 1.6. All invariants below use the
+accumulator model state: `accumulatedYieldPerShare`, `userYieldDebt`, `pendingYield`.
 
 **`test/invariant/InvariantPayoutRouter.t.sol`**
 
 ```
-invariant_payout_never_exceeds_yield
-  campaignTotalPayouts[id] <= totalYieldHarvestedByVault[id]
+invariant_accumulator_monotonic
+  accumulatedYieldPerShare[vault][asset] never decreases between calls
 
-invariant_shareholder_list_consistent
-  vaultShareholders[v].length == count(u: userVaultShares[u][v] > 0)
+invariant_debt_never_exceeds_accumulator
+  userYieldDebt[vault][asset][user] <= accumulatedYieldPerShare[vault][asset]
+  (a user cannot be credited yield from the future)
+
+invariant_total_claimed_bounded_by_recorded
+  sum(allClaims[vault][asset]) <= sum(allRecordedYield[vault][asset])
+  (track in handler; assert no over-distribution)
 
 invariant_fee_bounded
-  campaignProtocolFees[id] <= campaignTotalPayouts[id] * MAX_FEE_BPS / 10000
+  protocolFeePaid[vault][asset] <= totalDistributed[vault][asset] * MAX_FEE_BPS / 10000
+
+invariant_pending_yield_non_negative
+  pendingYield[vault][asset][user] is always >= 0 (uint, but assert no underflow path)
 ```
 
 **`test/invariant/handlers/CampaignRegistryHandler.sol`**
@@ -695,19 +707,27 @@ it("emergency: pause + emergencyWithdraw from real Aave within same block");
 it("totalAssets: matches actual on-chain balances before and after harvest");
 ```
 
-**`test/fork/PayoutRouter.gas.fork.ts`** — gas profiling (critical for O(n) loop)
+**`test/fork/PayoutRouter.gas.fork.ts`** — gas profiling (accumulator model)
 
 ```typescript
+// recordYield is O(1) regardless of depositor count — verify it stays flat
 const SHAREHOLDER_COUNTS = [10, 50, 100, 200];
 
 for (const n of SHAREHOLDER_COUNTS) {
-  it(`distributeToAllUsers with ${n} shareholders: gas < limit`, async () => {
-    // fund n wallets, deposit into vault, harvest, measure gas
-    // WARN if gas > 2_000_000 (approaching safe limit for Base)
-    // FAIL  if gas > 8_000_000 (Base block gas limit)
+  it(`recordYield with ${n} depositors: gas is flat (O(1))`, async () => {
+    // fund n wallets, deposit into vault, call recordYield, measure gas
+    // assert: gas does not grow with n (within ±5% across all counts)
+    // FAIL if gas > 200_000 (should be a single accumulator update + event)
+  });
+
+  it(`claimYield per-user with ${n} total depositors: gas is flat (O(1))`, async () => {
+    // after recordYield, one user calls claimYield — gas must not depend on n
+    // FAIL if gas > 150_000
   });
 }
-// Expected: 200 shareholders will approach or exceed limits — documents the DoS risk
+// Note: push-model DoS risk eliminated by Phase 1.6.
+// These tests confirm the O(1) guarantee holds at real Aave state.
+// If gas grows with n, the accumulator implementation has a bug.
 ```
 
 **`test/fork/rpc.connection.ts`** — RPC and fork sanity checks (run first)
@@ -819,17 +839,20 @@ DEPLOYMENT_RPC=<tenderly-vnet-rpc> forge script script/Deploy03_Initialize.s.sol
 2. executeFeeChange immediately → assert revert (timelock)
 3. Time travel +7 days
 4. executeFeeChange → assert s.feeBps == 400
-5. harvest + distributeToAllUsers
-6. assert: protocolAmount uses 400bps (not hardcoded 250bps)
+5. harvest → vault calls recordYield on router
+6. donors call claimYield → assert protocolAmount uses 400bps (not hardcoded 250bps)
    → This test FAILS before the feeBps bug is fixed. Use it to confirm the fix.
 ```
 
-**Scenario E — Gas DoS Validation**
+**Scenario E — Gas Flatness Validation (accumulator model)**
 
 ```
-1. Register 200 shareholders in a single vault
-2. harvest() → measure gas via Tenderly gas profiler
-3. If gas > 8_000_000: document as confirmed DoS vector, file as critical
+1. Register 200 depositors in a single vault
+2. harvest() → vault calls recordYield → measure gas via Tenderly gas profiler
+3. assert: recordYield gas is flat regardless of depositor count
+4. one depositor calls claimYield → measure gas
+5. assert: claimYield gas is flat regardless of total depositor count
+6. If either scales with depositor count: accumulator has a bug, file as critical
 ```
 
 **Tenderly Gas Profiler:** After each simulation, open the transaction in Tenderly dashboard

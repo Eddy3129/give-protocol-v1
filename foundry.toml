@@ -55,6 +55,11 @@ cbor_metadata = true
 gas_reports = []
 optimizer = false
 
+[invariant]
+runs = 256
+depth = 500
+fail_on_revert = false
+
 # Linting configuration
 [lint]
 # Disable specific linting rules that are too strict for our use case
