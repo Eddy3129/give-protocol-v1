@@ -11,6 +11,7 @@ import {console} from "forge-std/console.sol";
  * @dev Provides JSON-based persistence of deployment addresses across deployment phases
  */
 abstract contract BaseDeployment is Script {
+    string internal constant DEPLOYMENTS_DIR = "./deployments";
     // ============================================================
     // STATE VARIABLES
     // ============================================================
@@ -33,6 +34,8 @@ abstract contract BaseDeployment is Script {
         network = getNetwork();
         deploymentsPath = getDeploymentsPath();
 
+        _ensureDeploymentsStorage();
+
         console.log("========================================");
         console.log("GIVE Protocol v1 - Deployment Script");
         console.log("========================================");
@@ -54,6 +57,10 @@ abstract contract BaseDeployment is Script {
         if (chainId == 84532) return "base-sepolia";
         if (chainId == 8453) return "base-mainnet";
         if (chainId == 1) return "ethereum";
+        if (chainId == 42161) return "arbitrum-one";
+        if (chainId == 421614) return "arbitrum-sepolia";
+        if (chainId == 10) return "optimism";
+        if (chainId == 11155420) return "optimism-sepolia";
 
         revert("Unsupported chain ID");
     }
@@ -79,6 +86,7 @@ abstract contract BaseDeployment is Script {
 
         // Serialize address
         vm.serializeAddress(objectKey, key, addr);
+        _upsertLatestAddress(key, addr);
 
         console.log("Saved:", key, "->", addr);
     }
@@ -86,18 +94,21 @@ abstract contract BaseDeployment is Script {
     function saveDeploymentString(string memory key, string memory value) internal {
         string memory objectKey = "deployment";
         vm.serializeString(objectKey, key, value);
+        _upsertLatestString(key, value);
         console.log("Saved:", key, "->", value);
     }
 
     function saveDeploymentUint(string memory key, uint256 value) internal {
         string memory objectKey = "deployment";
         vm.serializeUint(objectKey, key, value);
+        _upsertLatestUint(key, value);
         console.log("Saved:", key, "->", value);
     }
 
     function saveDeploymentBytes32(string memory key, bytes32 value) internal {
         string memory objectKey = "deployment";
         vm.serializeBytes32(objectKey, key, value);
+        _upsertLatestBytes32(key, value);
         console.log("Saved:", key, "->", vm.toString(value));
     }
 
@@ -114,14 +125,47 @@ abstract contract BaseDeployment is Script {
         metadata = vm.serializeUint(objectKey, "timestamp", deploymentTimestamp);
         metadata = vm.serializeAddress(objectKey, "deployer", msg.sender);
 
-        // Write to latest
-        vm.writeJson(metadata, deploymentsPath);
+        _upsertLatestString("network", network);
+        _upsertLatestUint("chainId", block.chainid);
+        _upsertLatestUint("timestamp", deploymentTimestamp);
+        _upsertLatestAddress("deployer", msg.sender);
+
         console.log("Deployment saved to:", deploymentsPath);
 
         // Archive with timestamp
         string memory archivePath = getDeploymentsArchivePath();
         vm.writeJson(metadata, archivePath);
         console.log("Deployment archived to:", archivePath);
+    }
+
+    function _ensureDeploymentsStorage() private {
+        if (!vm.exists(DEPLOYMENTS_DIR)) {
+            vm.createDir(DEPLOYMENTS_DIR, true);
+        }
+
+        if (!vm.exists(deploymentsPath)) {
+            vm.writeFile(deploymentsPath, "{}");
+        }
+    }
+
+    function _upsertLatestAddress(string memory key, address value) private {
+        _upsertLatestJsonValue(key, string.concat('"', vm.toString(value), '"'));
+    }
+
+    function _upsertLatestBytes32(string memory key, bytes32 value) private {
+        _upsertLatestJsonValue(key, string.concat('"', vm.toString(value), '"'));
+    }
+
+    function _upsertLatestString(string memory key, string memory value) private {
+        _upsertLatestJsonValue(key, string.concat('"', value, '"'));
+    }
+
+    function _upsertLatestUint(string memory key, uint256 value) private {
+        _upsertLatestJsonValue(key, vm.toString(value));
+    }
+
+    function _upsertLatestJsonValue(string memory key, string memory jsonValue) private {
+        vm.writeJson(jsonValue, deploymentsPath, string.concat(".", key));
     }
 
     // ============================================================
@@ -138,12 +182,40 @@ abstract contract BaseDeployment is Script {
     }
 
     function loadDeploymentOrZero(string memory key) internal view returns (address) {
-        try this.loadDeployment(key) returns (address addr) {
-            return addr;
-        } catch {
+        string memory json = vm.readFile(deploymentsPath);
+        if (!_jsonContainsKey(json, key)) {
             console.log("Not found:", key, "(using zero address)");
             return address(0);
         }
+
+        bytes memory data = vm.parseJson(json, string.concat(".", key));
+        address addr = abi.decode(data, (address));
+        console.log("Loaded:", key, "->", addr);
+        return addr;
+    }
+
+    function _jsonContainsKey(string memory json, string memory key) private pure returns (bool) {
+        bytes memory haystack = bytes(json);
+        bytes memory needle = bytes(string.concat('"', key, '"'));
+
+        if (needle.length == 0 || needle.length > haystack.length) {
+            return false;
+        }
+
+        for (uint256 i = 0; i <= haystack.length - needle.length; i++) {
+            bool matched = true;
+            for (uint256 j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     function loadDeploymentBytes32(string memory key) internal view returns (bytes32) {

@@ -33,7 +33,7 @@ remappings = [
     "@aave/core-v3/=lib/aave-v3-core/",
     "pendle-core-v2-public/=lib/pendle-core-v2-public/contracts/"
 ]
-
+fs_permissions = [{ access = "read-write", path = "deployments" }]
 [rpc_endpoints]
 # Private endpoint (Alchemy/Infura) — set BASE_RPC_URL in .env for higher rate limits.
 # Public fallback used automatically by ForkBase.t.sol when BASE_RPC_URL is unset.
@@ -71,8 +71,6 @@ fail_on_revert = false
 
 # Linting configuration
 [lint]
-# Production-grade baseline: keep ignores minimal and scoped to naming conventions.
-# Do not globally ignore security/performance signals.
 ignored = [
     "mixed-case-variable",     # Allow SCREAMING_SNAKE_CASE for role constants in scripts/tests
     "mixed-case-function",     # Allow __init patterns and _internal helpers

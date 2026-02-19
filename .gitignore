@@ -5,6 +5,7 @@ out/
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
+/broadcast/*/8453/
 /broadcast/**/dry-run/
 
 # Docs
@@ -23,3 +24,6 @@ node_modules/
 semgrep-report.json
 slither-output*.txt
 slither-report*.json
+
+#deployments
+deployments/

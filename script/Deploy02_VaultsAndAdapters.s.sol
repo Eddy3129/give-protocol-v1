@@ -223,6 +223,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
 
         require(usdcToken != address(0), "USDC_ADDRESS not set in .env");
         console.log("Using USDC at:", usdcToken);
+        saveDeployment("USDCAddress", usdcToken);
 
         // ========================================
         // STEP 6: Deploy Main USDC Vault

@@ -7,6 +7,8 @@ import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
 import {StrategyManager} from "../src/manager/StrategyManager.sol";
 import {AaveAdapter} from "../src/adapters/AaveAdapter.sol";
 import {PendleAdapter} from "../src/adapters/kinds/PendleAdapter.sol";
+import {GiveVault4626} from "../src/vault/GiveVault4626.sol";
+import {PayoutRouter} from "../src/payout/PayoutRouter.sol";
 import {console} from "forge-std/console.sol";
 
 /**
@@ -34,6 +36,8 @@ contract Deploy03_Initialize is BaseDeployment {
     ACLManager public aclManager;
     StrategyRegistry public strategyRegistry;
     StrategyManager public usdcStrategyManager;
+    GiveVault4626 public usdcVault;
+    PayoutRouter public payoutRouter;
     AaveAdapter public aaveUsdcAdapter;
     PendleAdapter public pendleUsdcAdapter;
 
@@ -65,6 +69,8 @@ contract Deploy03_Initialize is BaseDeployment {
         aclManager = ACLManager(loadDeployment("ACLManager"));
         strategyRegistry = StrategyRegistry(loadDeployment("StrategyRegistry"));
         usdcStrategyManager = StrategyManager(loadDeployment("USDCStrategyManager"));
+        usdcVault = GiveVault4626(payable(loadDeployment("USDCVault")));
+        payoutRouter = PayoutRouter(payable(loadDeployment("PayoutRouter")));
 
         // Try to load Aave adapter (may not exist if Aave not available)
         aaveUsdcAdapter = AaveAdapter(loadDeploymentOrZero("AaveUSDCAdapter"));
@@ -106,7 +112,7 @@ contract Deploy03_Initialize is BaseDeployment {
         // ========================================
         // STEP 1: Create Canonical Roles
         // ========================================
-        console.log("\n[1/5] Creating Canonical Protocol Roles...");
+        console.log("\n[1/6] Creating Canonical Protocol Roles...");
 
         // Create roles (only if not already created)
         if (!aclManager.roleExists(ROLE_UPGRADER)) {
@@ -149,7 +155,7 @@ contract Deploy03_Initialize is BaseDeployment {
         // ========================================
         // STEP 2: Grant Roles to Admin Addresses
         // ========================================
-        console.log("\n[2/5] Granting Roles to Admins...");
+        console.log("\n[2/6] Granting Roles to Admins...");
 
         // Grant upgrader role
         aclManager.grantRole(ROLE_UPGRADER, admin);
@@ -177,7 +183,7 @@ contract Deploy03_Initialize is BaseDeployment {
         // ========================================
         // STEP 3: Register Initial Strategies
         // ========================================
-        console.log("\n[3/5] Registering Initial Strategies...");
+        console.log("\n[3/6] Registering Initial Strategies...");
 
         if (address(aaveUsdcAdapter) != address(0)) {
             // Register Aave USDC strategy
@@ -223,7 +229,7 @@ contract Deploy03_Initialize is BaseDeployment {
         // ========================================
         // STEP 4: Approve & Activate Adapters
         // ========================================
-        console.log("\n[4/5] Approving and Activating Adapters...");
+        console.log("\n[4/6] Approving and Activating Adapters...");
 
         if (address(aaveUsdcAdapter) != address(0)) {
             // Approve Aave adapter on USDC vault
@@ -257,9 +263,42 @@ contract Deploy03_Initialize is BaseDeployment {
         }
 
         // ========================================
-        // STEP 5: Save Configuration
+        // STEP 5: Wire Vault ↔ PayoutRouter
         // ========================================
-        console.log("\n[5/5] Saving Final Configuration...");
+        console.log("\n[5/6] Wiring Vault to PayoutRouter...");
+
+        // setDonationRouter — vault calls payoutRouter.updateUserShares on every deposit/withdraw
+        // and transfers harvested yield to payoutRouter.recordYield. Without this, the router
+        // never tracks shares and yield distribution is completely bypassed.
+        if (usdcVault.donationRouter() != address(payoutRouter)) {
+            usdcVault.setDonationRouter(address(payoutRouter));
+            console.log("setDonationRouter -> PayoutRouter:", address(payoutRouter));
+        } else {
+            console.log("donationRouter already set");
+        }
+
+        // setAuthorizedCaller — payoutRouter.updateUserShares and recordYield are gated behind
+        // onlyAuthorized. The vault must be an authorized caller or neither call succeeds.
+        // PayoutRouter.setAuthorizedCaller requires VAULT_MANAGER_ROLE. The deployer holds
+        // DEFAULT_ADMIN_ROLE on the router (granted in initialize), so we grant ourselves the
+        // role, perform the wiring, then optionally leave the role in place for future ops.
+        if (!payoutRouter.authorizedCallers(address(usdcVault))) {
+            bytes32 VAULT_MANAGER_ROLE = keccak256("VAULT_MANAGER_ROLE");
+            address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
+            if (!payoutRouter.hasRole(VAULT_MANAGER_ROLE, deployer)) {
+                payoutRouter.grantRole(VAULT_MANAGER_ROLE, deployer);
+                console.log("Granted VAULT_MANAGER_ROLE to deployer on PayoutRouter");
+            }
+            payoutRouter.setAuthorizedCaller(address(usdcVault), true);
+            console.log("setAuthorizedCaller(USDCVault) = true");
+        } else {
+            console.log("USDCVault already authorized on PayoutRouter");
+        }
+
+        // ========================================
+        // STEP 6: Save Configuration
+        // ========================================
+        console.log("\n[6/6] Saving Final Configuration...");
 
         // Save role hashes for future reference
         saveDeploymentBytes32("ROLE_UPGRADER", ROLE_UPGRADER);
