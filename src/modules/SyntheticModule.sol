@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 // import "../synthetic/SyntheticLogic.sol"; // DEFERRED: Phase 9 - Synthetic assets not implemented in v1
-import "../storage/StorageLib.sol";
+import {StorageLib} from "../storage/StorageLib.sol";
 
 /**
  * @title SyntheticModule

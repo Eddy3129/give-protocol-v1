@@ -13,8 +13,6 @@ pragma solidity ^0.8.20;
  */
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
-import {DataTypes} from "@aave/core-v3/contracts/protocol/libraries/types/DataTypes.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";

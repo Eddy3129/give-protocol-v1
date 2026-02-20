@@ -334,10 +334,14 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
      * @param roleId The role to check
      */
     modifier onlyRole(bytes32 roleId) {
+        _onlyRole(roleId);
+        _;
+    }
+
+    function _onlyRole(bytes32 roleId) internal view {
         if (!aclManager.hasRole(roleId, msg.sender)) {
             revert Unauthorized(roleId, msg.sender);
         }
-        _;
     }
 
     // ============================================

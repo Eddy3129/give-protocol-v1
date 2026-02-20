@@ -100,10 +100,10 @@ contract StrategyManager is ACLShim, ReentrancyGuard, Pausable {
     GiveVault4626 public immutable vault;
 
     /// @notice Strategy registry for validation
-    StrategyRegistry public strategyRegistry;
+    StrategyRegistry public immutable strategyRegistry;
 
     /// @notice Campaign registry for validation
-    CampaignRegistry public campaignRegistry;
+    CampaignRegistry public immutable campaignRegistry;
 
     /// @notice Mapping of approved adapters
     mapping(address => bool) public approvedAdapters;
@@ -439,12 +439,13 @@ contract StrategyManager is ACLShim, ReentrancyGuard, Pausable {
      * @return Best adapter address (or address(0) if none found)
      */
     function _findBestAdapter() internal view returns (address) {
-        if (adapterList.length == 0) return address(0);
+        uint256 len = adapterList.length;
+        if (len == 0) return address(0);
 
         address bestAdapter = adapterList[0];
         uint256 bestYield = 0;
 
-        for (uint256 i = 0; i < adapterList.length; i++) {
+        for (uint256 i = 0; i < len; i++) {
             address adapter = adapterList[i];
             if (!approvedAdapters[adapter]) continue;
 
@@ -507,10 +508,11 @@ contract StrategyManager is ACLShim, ReentrancyGuard, Pausable {
      * @return Array of approved adapter addresses
      */
     function getApprovedAdapters() external view returns (address[] memory) {
-        address[] memory approved = new address[](adapterList.length);
+        uint256 len = adapterList.length;
+        address[] memory approved = new address[](len);
         uint256 count = 0;
 
-        for (uint256 i = 0; i < adapterList.length; i++) {
+        for (uint256 i = 0; i < len; i++) {
             if (approvedAdapters[adapterList[i]]) {
                 approved[count] = adapterList[i];
                 count++;

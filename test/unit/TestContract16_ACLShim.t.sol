@@ -2,12 +2,10 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {ACLShim} from "../../src/utils/ACLShim.sol";
 import {ACLManager} from "../../src/governance/ACLManager.sol";
-import {IACLManager} from "../../src/interfaces/IACLManager.sol";
 
 /// @dev Minimal concrete contract that exposes ACLShim internals for testing
 contract ConcreteShim is ACLShim {

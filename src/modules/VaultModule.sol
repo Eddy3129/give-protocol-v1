@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../storage/StorageLib.sol";
-import "../types/GiveTypes.sol";
+import {StorageLib} from "../storage/StorageLib.sol";
+import {GiveTypes} from "../types/GiveTypes.sol";
 
 /**
  * @title VaultModule

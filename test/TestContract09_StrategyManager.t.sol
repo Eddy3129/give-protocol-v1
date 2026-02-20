@@ -9,8 +9,6 @@ import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
 import {CampaignRegistry} from "../src/registry/CampaignRegistry.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockYieldAdapter} from "../src/mocks/MockYieldAdapter.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
-import {IYieldAdapter} from "../src/interfaces/IYieldAdapter.sol";
 
 /**
  * @title MockGiveVault

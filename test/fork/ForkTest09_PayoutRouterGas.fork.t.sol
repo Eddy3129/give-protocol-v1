@@ -12,8 +12,6 @@ pragma solidity ^0.8.20;
  *          Critical: Any gas regression indicates regression to loop-based distribution.
  */
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";

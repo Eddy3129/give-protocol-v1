@@ -139,19 +139,6 @@ abstract contract VaultTokenBase is
     }
 
     /**
-     * @notice Sets ACL manager address
-     * @dev Internal function for ACL manager updates.
-     *      Can be used by inheriting contracts if ACL manager needs to change.
-     * @param acl New ACL manager address
-     */
-    function _setACLManager(address acl) internal {
-        if (acl == address(0)) revert ZeroAddress();
-        address previous = address(aclManager);
-        aclManager = IACLManager(acl);
-        emit ACLManagerUpdated(previous, acl);
-    }
-
-    /**
      * @notice Override role check to delegate to ACL manager
      * @dev Implements dual-source role checking:
      *      1. First checks external ACL manager (if set and account has role)

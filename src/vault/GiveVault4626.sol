@@ -443,6 +443,12 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         emit Harvest(profit, loss, donated);
     }
 
+    /**
+     * @notice Admin break-glass: force-withdraw all adapter funds to the vault
+     * @dev Intentionally has NO pause guard — this must function during emergency shutdown
+     *      when the vault is paused, to allow admins to recover stranded adapter funds.
+     *      Guarded exclusively by DEFAULT_ADMIN_ROLE.
+     */
     function emergencyWithdrawFromAdapter() external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256 withdrawn) {
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         address adapterAddr = cfg.activeAdapter;

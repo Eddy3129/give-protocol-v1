@@ -1,0 +1,132 @@
+{
+  "_comment": "Revert selector → user-facing message map for Give Protocol frontend. Generated from GiveVault4626, PayoutRouter, CampaignRegistry, ACLManager.",
+  "_usage": "Decode the revert selector from the error bytes (first 4 bytes), look up here, display the message to the user.",
+  "selectors": {
+    "0x356680b7": {
+      "name": "ERC4626ExceededMaxRedeem",
+      "contract": "GiveVault4626 (ERC4626)",
+      "userMessage": "Insufficient shares to redeem.",
+      "devNote": "owner has fewer shares than requested"
+    },
+    "0x8baa579f": {
+      "name": "InsufficientCash",
+      "contract": "GiveVault4626",
+      "userMessage": "Vault is rebalancing — please try again shortly.",
+      "devNote": "vault cash < needed, adapter divest failed to cover shortfall"
+    },
+    "0x5a2e4757": {
+      "name": "ExcessiveLoss",
+      "contract": "GiveVault4626",
+      "userMessage": "Withdrawal paused — slippage too high. Try a smaller amount or wait.",
+      "devNote": "divest returned less than maxLossBps threshold"
+    },
+    "0xd93c0665": {
+      "name": "EnforcedPause",
+      "contract": "GiveVault4626 (Pausable)",
+      "userMessage": "Vault is currently paused.",
+      "devNote": "contract is in paused state (non-emergency or emergency within grace period)"
+    },
+    "0x6f9a9e09": {
+      "name": "GracePeriodExpired",
+      "contract": "GiveVault4626",
+      "userMessage": "Emergency recovery period has ended — please contact support.",
+      "devNote": "emergency was activated more than 24h ago; normal redeem path closed"
+    },
+    "0x1f2a2005": {
+      "name": "ZeroAmount",
+      "contract": "GiveVault4626",
+      "userMessage": "Amount must be greater than zero.",
+      "devNote": "shares or assets param was zero"
+    },
+    "0x6f32664b": {
+      "name": "GracePeriodActive",
+      "contract": "GiveVault4626",
+      "userMessage": "Emergency withdrawal available after 24-hour grace period.",
+      "devNote": "emergencyWithdrawUser called too early"
+    },
+    "0xd3715e97": {
+      "name": "NotInEmergency",
+      "contract": "GiveVault4626",
+      "userMessage": "This action is only available during an emergency.",
+      "devNote": "emergencyWithdrawUser called when not in emergency state"
+    },
+    "0x45b56078": {
+      "name": "InsufficientAllowance",
+      "contract": "GiveVault4626",
+      "userMessage": "You don't have permission to withdraw these shares.",
+      "devNote": "msg.sender is not owner and has insufficient allowance for emergencyWithdrawUser"
+    },
+    "0x6b2c38f2": {
+      "name": "SlippageExceeded",
+      "contract": "GiveVault4626 (ETH methods)",
+      "userMessage": "Transaction would exceed your slippage limit. Try again with updated parameters.",
+      "devNote": "actual shares/assets outside minShares/minAssets/maxShares bounds in ETH convenience methods"
+    },
+    "0xce3a3d37": {
+      "name": "InvalidConfiguration",
+      "contract": "GiveVault4626",
+      "userMessage": "Vault is not configured for this operation.",
+      "devNote": "wrappedNative not set, or donationRouter missing in harvest"
+    },
+    "0x3ddddddd": {
+      "name": "AdapterNotSet",
+      "contract": "GiveVault4626",
+      "userMessage": "Yield strategy not active. Contact protocol admin.",
+      "devNote": "harvest or emergencyWithdrawFromAdapter called with no active adapter"
+    },
+    "0x9a208100": {
+      "name": "VaultNotRegistered",
+      "contract": "PayoutRouter",
+      "userMessage": "This vault is not registered for yield distribution.",
+      "devNote": "vault has no associated campaignId in PayoutRouter"
+    },
+    "0xb94abeec": {
+      "name": "OperationNotAllowed (payoutsHalted)",
+      "contract": "PayoutRouter",
+      "userMessage": "Yield claims are currently paused for this campaign.",
+      "devNote": "campaign.payoutsHalted is true (checkpoint failed)"
+    },
+    "0x6b2c38f3": {
+      "name": "InvalidAllocation",
+      "contract": "PayoutRouter",
+      "userMessage": "Invalid split percentage. Choose 50%, 75%, or 100%.",
+      "devNote": "allocationPercentage not in validAllocations[50,75,100]"
+    },
+    "0x8579befe": {
+      "name": "InvalidBeneficiary",
+      "contract": "PayoutRouter",
+      "userMessage": "A beneficiary address is required for partial campaign splits.",
+      "devNote": "allocationPercentage < 100 but beneficiary is address(0)"
+    },
+    "0x82b42900": {
+      "name": "Unauthorized (PayoutRouter)",
+      "contract": "PayoutRouter",
+      "userMessage": "You don't have permission to perform this action.",
+      "devNote": "role check failed via local AccessControl"
+    },
+    "0x2d5be4da": {
+      "name": "InsufficientSubmissionDeposit",
+      "contract": "CampaignRegistry",
+      "userMessage": "Campaign submission requires a 0.005 ETH deposit.",
+      "devNote": "msg.value < MIN_SUBMISSION_DEPOSIT"
+    },
+    "0xdce7fa76": {
+      "name": "CampaignAlreadyExists",
+      "contract": "CampaignRegistry",
+      "userMessage": "A campaign with this ID already exists.",
+      "devNote": "campaignId collision"
+    },
+    "0x04f3e10a": {
+      "name": "InvalidCampaignStatus",
+      "contract": "CampaignRegistry",
+      "userMessage": "This action is not available for the campaign's current status.",
+      "devNote": "status transition not allowed"
+    },
+    "0x81c6e9b4": {
+      "name": "ZeroAddress (generic)",
+      "contract": "Multiple",
+      "userMessage": "Invalid address provided.",
+      "devNote": "address(0) passed where non-zero required"
+    }
+  }
+}

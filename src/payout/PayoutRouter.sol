@@ -200,6 +200,9 @@ contract PayoutRouter is
         return _state().totalVaultShares[vault];
     }
 
+    /// @notice Returns all shareholders for a vault (unbounded — off-chain use only)
+    /// @dev WARNING: This array is unbounded. Do NOT call on-chain with large depositor sets.
+    ///      Use getVaultShareholdersPaged for on-chain or gas-sensitive contexts.
     function getVaultShareholders(address vault) external view returns (address[] memory) {
         GiveTypes.PayoutRouterState storage s = _state();
         address[] storage list = s.vaultShareholders[vault];
@@ -208,6 +211,32 @@ contract PayoutRouter is
             copy[i] = list[i];
         }
         return copy;
+    }
+
+    /// @notice Returns a paginated slice of shareholders for a vault
+    /// @param vault The vault address to query
+    /// @param offset Start index (0-based)
+    /// @param limit Maximum number of results to return
+    /// @return page Slice of shareholder addresses
+    /// @return total Total number of shareholders
+    function getVaultShareholdersPaged(address vault, uint256 offset, uint256 limit)
+        external
+        view
+        returns (address[] memory page, uint256 total)
+    {
+        GiveTypes.PayoutRouterState storage s = _state();
+        address[] storage list = s.vaultShareholders[vault];
+        total = list.length;
+        if (offset >= total || limit == 0) {
+            return (new address[](0), total);
+        }
+        uint256 end = offset + limit;
+        if (end > total) end = total;
+        uint256 count = end - offset;
+        page = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            page[i] = list[offset + i];
+        }
     }
 
     function getCampaignTotals(bytes32 campaignId) external view returns (uint256 payouts, uint256 protocolFees) {

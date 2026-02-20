@@ -11,7 +11,6 @@ import {RiskModule} from "../src/modules/RiskModule.sol";
 import {EmergencyModule} from "../src/modules/EmergencyModule.sol";
 import {SyntheticModule} from "../src/modules/SyntheticModule.sol";
 import {GiveTypes} from "../src/types/GiveTypes.sol";
-import {StorageLib} from "../src/storage/StorageLib.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
