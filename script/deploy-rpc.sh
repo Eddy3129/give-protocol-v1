@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# tenderly-deploy.sh — deploy the full Give Protocol stack to a Tenderly Virtual TestNet
-# and run smoke checks against every deployed proxy.
+# deploy-rpc.sh — deploy the GIVE Protocol to a remote RPC (Mainnet, Testnet, or Tenderly fork)
 #
 # Usage:
-#   bash script/tenderly-deploy.sh
+#   bash script/deploy-rpc.sh [--verify] [--broadcast]
+#
+# Examples:
+#   bash script/deploy-rpc.sh --broadcast
+#   bash script/deploy-rpc.sh --verify --broadcast
 #
 # Required env vars (in .env):
-#   TENDERLY_VIRTUAL_TESTNET_RPC  — Tenderly Virtual TestNet RPC URL
+#   RPC_URL                       — RPC URL for the target network
 #   ADMIN_ADDRESS                 — protocol admin/super-admin address
 #   TREASURY_ADDRESS              — fee recipient / treasury address
-#
 # Optional:
 #   UPGRADER_ADDRESS              — defaults to ADMIN_ADDRESS
 #   PROTOCOL_FEE_BPS              — defaults to 100 (1%)
@@ -23,9 +25,9 @@ if [[ -f .env ]]; then
   set -a && source .env && set +a
 fi
 
-RPC="${TENDERLY_VIRTUAL_TESTNET_RPC:-}"
+RPC="${RPC_URL:-}"
 if [[ -z "$RPC" ]]; then
-  echo "Error: TENDERLY_VIRTUAL_TESTNET_RPC is not set"
+  echo "Error: RPC_URL is not set"
   exit 1
 fi
 
@@ -37,7 +39,7 @@ for var in WALLET_ACCOUNT ADMIN_ADDRESS TREASURY_ADDRESS; do
 done
 
 echo "================================================================"
-echo "  Give Protocol — Tenderly Virtual TestNet Deploy"
+echo "  Give Protocol — Remote RPC Deploy"
 echo "  RPC: $RPC"
 echo "  Admin: $ADMIN_ADDRESS"
 echo "  Treasury: $TREASURY_ADDRESS"
@@ -157,7 +159,7 @@ fi
 echo ""
 echo "================================================================"
 if [[ $CHECKS_FAILED -eq 0 ]]; then
-  echo "  ✅ All phases complete. Contracts live on Tenderly Virtual TestNet."
+  echo "  ✅ All phases complete. Contracts live on targeted RPC."
   echo ""
   echo "  Next steps:"
   echo "   1. Verify contracts on Basescan (Phase 6E)"

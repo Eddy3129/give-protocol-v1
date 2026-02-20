@@ -19,10 +19,10 @@
  *   FORK_MODE=1                               Set by fork-smoke.sh; skips MockERC20.mint()
  *
  * Usage:
- *   node script/frontend/viem-smoke.mjs --mode=local
- *   node script/frontend/viem-smoke.mjs --mode=rpc
- *   CHAIN_CONFIG=config/chains/arbitrum.json node script/frontend/viem-smoke.mjs --mode=rpc
- *   node script/frontend/viem-smoke.mjs --mode=local --rpc-url=http://127.0.0.1:8545
+ *   node frontend/scripts/viem-smoke.mjs --mode=local
+ *   node frontend/scripts/viem-smoke.mjs --mode=rpc
+ *   CHAIN_CONFIG=config/chains/arbitrum.json node frontend/scripts/viem-smoke.mjs --mode=rpc
+ *   node frontend/scripts/viem-smoke.mjs --mode=local --rpc-url=http://127.0.0.1:8545
  */
 
 import {

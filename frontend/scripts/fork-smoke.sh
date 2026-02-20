@@ -3,8 +3,8 @@
 # viem integration suite against live protocol state.
 #
 # Usage:
-#   bash script/frontend/fork-smoke.sh
-#   CHAIN_CONFIG=config/chains/arbitrum.json bash script/frontend/fork-smoke.sh
+#   bash frontend/scripts/fork-smoke.sh
+#   CHAIN_CONFIG=config/chains/arbitrum.json bash frontend/scripts/fork-smoke.sh
 #
 # Env vars:
 #   CHAIN_CONFIG        path to chain config JSON (default: config/chains/base.json)
@@ -124,6 +124,6 @@ CHAIN_CONFIG="$CHAIN_CONFIG" \
 ANVIL_RPC_URL="$ANVIL_URL" \
 DEPLOYMENT_FILE="$DEPLOYMENT_FILE" \
 FORK_MODE="1" \
-  node script/frontend/viem-smoke.mjs --mode=local
+  node frontend/scripts/viem-smoke.mjs --mode=local
 
 echo "fork-smoke: done"
