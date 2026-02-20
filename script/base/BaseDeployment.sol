@@ -318,20 +318,17 @@ abstract contract BaseDeployment is Script {
     // ============================================================
 
     function startBroadcastWith(uint256 privateKey) internal {
-        bool shouldBroadcast = getEnvBoolOr("BROADCAST", false);
+        vm.startBroadcast(privateKey);
+        console.log("Broadcasting transactions...");
+    }
 
-        if (shouldBroadcast) {
-            vm.startBroadcast(privateKey);
-            console.log("Broadcasting transactions...");
-        } else {
-            console.log("Simulation mode (BROADCAST=false)");
-        }
+    /// @notice Start broadcast using forge --account / --ledger / --trezor (no private key needed)
+    function startBroadcast() internal {
+        vm.startBroadcast();
+        console.log("Broadcasting transactions (keyless - using forge --account)...");
     }
 
     function stopBroadcastIf() internal {
-        bool shouldBroadcast = getEnvBoolOr("BROADCAST", false);
-        if (shouldBroadcast) {
-            vm.stopBroadcast();
-        }
+        vm.stopBroadcast();
     }
 }

@@ -108,10 +108,12 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
     }
 
     function run() public {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-
-        startBroadcastWith(deployerPrivateKey);
-
+        bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        if (hasKey) {
+            startBroadcastWith(vm.envUint("PRIVATE_KEY"));
+        } else {
+            startBroadcast();
+        }
         // ========================================
         // STEP 1: Deploy Vault Implementations
         // ========================================
@@ -176,7 +178,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         aclManager.grantRole(RISK_MODULE_MANAGER_ROLE, protocolAdmin);
 
         // Also grant to deployer for this script
-        address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
+        address deployer = msg.sender;
         aclManager.grantRole(VAULT_MODULE_MANAGER_ROLE, deployer);
         aclManager.grantRole(ADAPTER_MODULE_MANAGER_ROLE, deployer);
         aclManager.grantRole(RISK_MODULE_MANAGER_ROLE, deployer);

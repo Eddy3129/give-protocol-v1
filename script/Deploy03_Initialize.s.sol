@@ -105,10 +105,12 @@ contract Deploy03_Initialize is BaseDeployment {
     }
 
     function run() public {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-
-        startBroadcastWith(deployerPrivateKey);
-
+        bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        if (hasKey) {
+            startBroadcastWith(vm.envUint("PRIVATE_KEY"));
+        } else {
+            startBroadcast();
+        }
         // ========================================
         // STEP 1: Create Canonical Roles
         // ========================================
@@ -284,10 +286,11 @@ contract Deploy03_Initialize is BaseDeployment {
         // role, perform the wiring, then optionally leave the role in place for future ops.
         if (!payoutRouter.authorizedCallers(address(usdcVault))) {
             bytes32 VAULT_MANAGER_ROLE = keccak256("VAULT_MANAGER_ROLE");
-            address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
-            if (!payoutRouter.hasRole(VAULT_MANAGER_ROLE, deployer)) {
-                payoutRouter.grantRole(VAULT_MANAGER_ROLE, deployer);
-                console.log("Granted VAULT_MANAGER_ROLE to deployer on PayoutRouter");
+            // Use admin (= wallet signer from ADMIN_ADDRESS). In forge scripts,
+            // msg.sender is the default runner (0x1804...), not the broadcast wallet.
+            if (!aclManager.hasRole(VAULT_MANAGER_ROLE, admin)) {
+                aclManager.grantRole(VAULT_MANAGER_ROLE, admin);
+                console.log("Granted VAULT_MANAGER_ROLE to admin on ACLManager");
             }
             payoutRouter.setAuthorizedCaller(address(usdcVault), true);
             console.log("setAuthorizedCaller(USDCVault) = true");

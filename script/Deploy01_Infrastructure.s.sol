@@ -64,10 +64,13 @@ contract Deploy01_Infrastructure is BaseDeployment {
     }
 
     function run() public {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-
-        startBroadcastWith(deployerPrivateKey);
-
+        bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        if (hasKey) {
+            uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+            startBroadcastWith(deployerPrivateKey);
+        } else {
+            startBroadcast(); // uses forge --account
+        }
         // ========================================
         // STEP 1: Deploy ACLManager
         // ========================================
