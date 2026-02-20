@@ -63,7 +63,7 @@ contract MockCampaignRegistryForFactory {
         });
     }
 
-    function setCampaignVault(bytes32 campaignId_, address vault, bytes32 lockProfile_) external {
+    function setCampaignVault(bytes32 campaignId_, address vault, bytes32 lockProfile_) public virtual {
         lastCampaignId = campaignId_;
         lastVault = vault;
         lastLockProfile = lockProfile_;
@@ -74,7 +74,7 @@ contract MockStrategyRegistryForFactory {
     bytes32 public lastStrategyId;
     address public lastVault;
 
-    function registerStrategyVault(bytes32 strategyId, address vault) external {
+    function registerStrategyVault(bytes32 strategyId, address vault) public virtual {
         lastStrategyId = strategyId;
         lastVault = vault;
     }
@@ -85,14 +85,85 @@ contract MockPayoutRouterForFactory {
     bytes32 public lastCampaignId;
     bool public lastAuthorized;
 
-    function registerCampaignVault(address vault, bytes32 campaignId) external {
+    function registerCampaignVault(address vault, bytes32 campaignId) public virtual {
         lastVault = vault;
         lastCampaignId = campaignId;
     }
 
-    function setAuthorizedCaller(address vault, bool authorized) external {
+    function setAuthorizedCaller(address vault, bool authorized) public virtual {
         lastVault = vault;
         lastAuthorized = authorized;
+    }
+}
+
+contract MockCampaignVaultImplWithFail {
+    bool public failInitializeCampaign;
+
+    function setFailInitializeCampaign(bool fail) external {
+        failInitializeCampaign = fail;
+    }
+
+    function initialize(address, string calldata, string calldata, address, address, address, address) external {}
+
+    function initializeCampaign(bytes32, bytes32, bytes32) external view {
+        require(!failInitializeCampaign, "init-campaign-fail");
+    }
+}
+
+contract MockCampaignVaultImplInitCampaignAlwaysFail {
+    function initialize(address, string calldata, string calldata, address, address, address, address) external {}
+
+    function initializeCampaign(bytes32, bytes32, bytes32) external pure {
+        revert("init-campaign-fail");
+    }
+}
+
+contract MockCampaignRegistryForFactoryWithFail is MockCampaignRegistryForFactory {
+    bool public failSetCampaignVault;
+
+    function setFailSetCampaignVault(bool fail) external {
+        failSetCampaignVault = fail;
+    }
+
+    function setCampaignVault(bytes32 campaignId_, address vault, bytes32 lockProfile_) public override {
+        require(!failSetCampaignVault, "set-campaign-vault-fail");
+        super.setCampaignVault(campaignId_, vault, lockProfile_);
+    }
+}
+
+contract MockStrategyRegistryForFactoryWithFail is MockStrategyRegistryForFactory {
+    bool public failRegisterStrategyVault;
+
+    function setFailRegisterStrategyVault(bool fail) external {
+        failRegisterStrategyVault = fail;
+    }
+
+    function registerStrategyVault(bytes32 strategyId, address vault) public override {
+        require(!failRegisterStrategyVault, "register-strategy-vault-fail");
+        super.registerStrategyVault(strategyId, vault);
+    }
+}
+
+contract MockPayoutRouterForFactoryWithFail is MockPayoutRouterForFactory {
+    bool public failRegisterCampaignVault;
+    bool public failSetAuthorizedCaller;
+
+    function setFailRegisterCampaignVault(bool fail) external {
+        failRegisterCampaignVault = fail;
+    }
+
+    function setFailSetAuthorizedCaller(bool fail) external {
+        failSetAuthorizedCaller = fail;
+    }
+
+    function registerCampaignVault(address vault, bytes32 campaignId) public override {
+        require(!failRegisterCampaignVault, "register-campaign-vault-fail");
+        super.registerCampaignVault(vault, campaignId);
+    }
+
+    function setAuthorizedCaller(address vault, bool authorized) public override {
+        require(!failSetAuthorizedCaller, "set-authorized-caller-fail");
+        super.setAuthorizedCaller(vault, authorized);
     }
 }
 
@@ -212,5 +283,120 @@ contract TestContract10_CampaignVaultFactory is Test {
         vm.prank(campaignAdmin);
         factory.setVaultImplementation(newImpl);
         assertEq(factory.vaultImplementation(), newImpl);
+    }
+
+    function test_Contract10_Case06_initialize_zeroAddressReverts() public {
+        CampaignVaultFactory newFactory = new CampaignVaultFactory();
+
+        vm.expectRevert(CampaignVaultFactory.ZeroAddress.selector);
+        newFactory.initialize(
+            address(0), address(campaignRegistry), address(strategyRegistry), address(payoutRouter), address(vaultImpl)
+        );
+
+        vm.expectRevert(CampaignVaultFactory.ZeroAddress.selector);
+        newFactory.initialize(
+            address(acl), address(0), address(strategyRegistry), address(payoutRouter), address(vaultImpl)
+        );
+    }
+
+    function test_Contract10_Case07_setImplementation_zeroAddressReverts() public {
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.ZeroAddress.selector);
+        factory.setVaultImplementation(address(0));
+    }
+
+    function test_Contract10_Case08_deploy_revertsWhenInitializeCampaignFails() public {
+        MockCampaignVaultImplInitCampaignAlwaysFail localImpl = new MockCampaignVaultImplInitCampaignAlwaysFail();
+
+        CampaignVaultFactory localFactory = new CampaignVaultFactory();
+        localFactory.initialize(
+            address(acl),
+            address(campaignRegistry),
+            address(strategyRegistry),
+            address(payoutRouter),
+            address(localImpl)
+        );
+
+        CampaignVaultFactory.DeployParams memory params = _params();
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.InvalidParameters.selector);
+        localFactory.deployCampaignVault(params);
+    }
+
+    function test_Contract10_Case09_deploy_revertsWhenSetCampaignVaultFails() public {
+        MockCampaignRegistryForFactoryWithFail localCampaignRegistry = new MockCampaignRegistryForFactoryWithFail();
+        localCampaignRegistry.setConfiguredStrategy(strategyId);
+        localCampaignRegistry.setFailSetCampaignVault(true);
+
+        CampaignVaultFactory localFactory = new CampaignVaultFactory();
+        localFactory.initialize(
+            address(acl),
+            address(localCampaignRegistry),
+            address(strategyRegistry),
+            address(payoutRouter),
+            address(vaultImpl)
+        );
+
+        CampaignVaultFactory.DeployParams memory params = _params();
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.InvalidParameters.selector);
+        localFactory.deployCampaignVault(params);
+    }
+
+    function test_Contract10_Case10_deploy_revertsWhenRegisterStrategyVaultFails() public {
+        MockStrategyRegistryForFactoryWithFail localStrategyRegistry = new MockStrategyRegistryForFactoryWithFail();
+        localStrategyRegistry.setFailRegisterStrategyVault(true);
+
+        CampaignVaultFactory localFactory = new CampaignVaultFactory();
+        localFactory.initialize(
+            address(acl),
+            address(campaignRegistry),
+            address(localStrategyRegistry),
+            address(payoutRouter),
+            address(vaultImpl)
+        );
+
+        CampaignVaultFactory.DeployParams memory params = _params();
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.InvalidParameters.selector);
+        localFactory.deployCampaignVault(params);
+    }
+
+    function test_Contract10_Case11_deploy_revertsWhenRegisterCampaignVaultFails() public {
+        MockPayoutRouterForFactoryWithFail localPayoutRouter = new MockPayoutRouterForFactoryWithFail();
+        localPayoutRouter.setFailRegisterCampaignVault(true);
+
+        CampaignVaultFactory localFactory = new CampaignVaultFactory();
+        localFactory.initialize(
+            address(acl),
+            address(campaignRegistry),
+            address(strategyRegistry),
+            address(localPayoutRouter),
+            address(vaultImpl)
+        );
+
+        CampaignVaultFactory.DeployParams memory params = _params();
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.InvalidParameters.selector);
+        localFactory.deployCampaignVault(params);
+    }
+
+    function test_Contract10_Case12_deploy_revertsWhenSetAuthorizedCallerFails() public {
+        MockPayoutRouterForFactoryWithFail localPayoutRouter = new MockPayoutRouterForFactoryWithFail();
+        localPayoutRouter.setFailSetAuthorizedCaller(true);
+
+        CampaignVaultFactory localFactory = new CampaignVaultFactory();
+        localFactory.initialize(
+            address(acl),
+            address(campaignRegistry),
+            address(strategyRegistry),
+            address(localPayoutRouter),
+            address(vaultImpl)
+        );
+
+        CampaignVaultFactory.DeployParams memory params = _params();
+        vm.prank(campaignAdmin);
+        vm.expectRevert(CampaignVaultFactory.InvalidParameters.selector);
+        localFactory.deployCampaignVault(params);
     }
 }

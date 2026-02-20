@@ -15,11 +15,11 @@ contract ForkMockACLForEth {
     }
 }
 
-/// @title DepositETHForkTest
+/// @title ForkTest04_DepositETH
 /// @notice Covers ETH-native vault flows on Base fork:
 ///         depositETH -> wrap -> invest, withdrawETH -> divest -> unwrap,
 ///         and config/slippage reverts.
-contract DepositETHForkTest is ForkBase {
+contract ForkTest04_DepositETH is ForkBase {
     GiveVault4626 internal vault;
     AaveAdapter internal adapter;
 
@@ -64,7 +64,8 @@ contract DepositETHForkTest is ForkBase {
         assertGt(adapter.totalAssets(), aTokenBefore, "adapter did not receive invested WETH");
 
         uint256 totalAssetsAfter = vault.totalAssets();
-        assertApproxEqAbs(totalAssetsAfter, DEPOSIT_AMOUNT, 1, "vault totalAssets mismatch");
+        // aToken balance accrues interest each block; allow 2 wei for index rounding.
+        assertApproxEqAbs(totalAssetsAfter, DEPOSIT_AMOUNT, 2, "vault totalAssets mismatch");
     }
 
     function test_withdrawETH_unwraps_and_returns_native() public requiresFork {

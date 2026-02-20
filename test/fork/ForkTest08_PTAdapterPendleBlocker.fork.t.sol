@@ -7,10 +7,10 @@ import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {PTAdapter} from "../../src/adapters/kinds/PTAdapter.sol";
 
-/// @title PTAdapterPendleBlockerForkTest
+/// @title ForkTest08_PTAdapterPendleBlocker
 /// @notice Fork evidence for Phase 5.5 GAP-3:
 ///         current PTAdapter is simulation/accounting-only and does not integrate Pendle router flows.
-contract PTAdapterPendleBlockerForkTest is ForkBase {
+contract ForkTest08_PTAdapterPendleBlocker is ForkBase {
     bytes32 internal constant ADAPTER_ID = keccak256("fork.pt.blocker");
     uint256 internal constant INVEST_AMOUNT = 10_000e6; // USDC 10k
 

@@ -6,7 +6,7 @@ import "forge-std/Test.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 import {CampaignRegistryHandler} from "./handlers/CampaignRegistryHandler.sol";
 
-/// @title InvariantCampaignRegistry
+/// @title InvariantTest01_CampaignRegistry
 /// @notice Verifies core governance and accounting invariants of CampaignRegistry.
 ///
 /// Properties tested:
@@ -14,7 +14,7 @@ import {CampaignRegistryHandler} from "./handlers/CampaignRegistryHandler.sol";
 ///   I2. getCampaign.totalStaked == ghost_totalActive + ghost_totalPendingExit.
 ///   I3. If payoutsHalted == true, a Failed checkpoint must exist.
 ///   I4. getStakePosition sums are consistent with ghost stake tracking per staker.
-contract InvariantCampaignRegistry is Test {
+contract InvariantTest01_CampaignRegistry is Test {
     CampaignRegistryHandler internal handler;
 
     function setUp() public {

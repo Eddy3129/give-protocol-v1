@@ -6,10 +6,10 @@ import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 
-/// @title AaveAdapterForkTest
+/// @title ForkTest01_AaveAdapter
 /// @notice Validates AaveAdapter behaviour against live Aave V3 on Base mainnet.
 ///         This test contract acts as the vault (has VAULT_ROLE on the adapter).
-contract AaveAdapterForkTest is ForkBase {
+contract ForkTest01_AaveAdapter is ForkBase {
     AaveAdapter internal adapter;
 
     address internal admin;

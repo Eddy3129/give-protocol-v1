@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   ForkTest02_CheckpointVoting
+ * @author  GIVE Labs
+ * @notice  Fork test for Phase 5.5 GAP-5: checkpoint governance end-to-end
+ * @dev     Tests campaign checkpoint lifecycle on live Base mainnet fork:
+ *          - Checkpoint proposal and scheduling
+ *          - Multi-supporter voting with stake-weighted votes
+ *          - Checkpoint finalization and payout halt/resume
+ *          - Recovery paths for failed checkpoints
+ */
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
@@ -73,9 +84,7 @@ contract ForkMockStrategyRegistry {
     }
 }
 
-/// @title CheckpointVotingForkTest
-/// @notice Fork tests for Phase 5.5 GAP-5 checkpoint governance end-to-end.
-contract CheckpointVotingForkTest is ForkBase {
+contract ForkTest02_CheckpointVoting is ForkBase {
     bytes32 internal constant CAMPAIGN_ID = keccak256("fork_checkpoint_campaign");
     bytes32 internal constant STRATEGY_ID = keccak256("fork_checkpoint_strategy");
     uint256 internal constant DONOR_DEPOSIT = 100_000e6;

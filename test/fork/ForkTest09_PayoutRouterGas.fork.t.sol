@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   ForkTest09_PayoutRouterGas
+ * @author  GIVE Labs
+ * @notice  Gas profiling for accumulator-model PayoutRouter on Base fork
+ * @dev     Validates gas bounds for core yield distribution operations:
+ *          - recordYield: CEILING = 200,000 gas (should NOT scale with depositor count)
+ *          - claimYield: CEILING = 350,000 gas (should NOT scale with beneficiary count)
+ *          Simulates yield with MockERC20 (no live Aave required for deterministic gas).
+ *          Critical: Any gas regression indicates regression to loop-based distribution.
+ */
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
@@ -34,17 +45,7 @@ contract GasMockCampaignRegistry {
     }
 }
 
-/// @title PayoutRouterGasForkTest
-/// @notice Validates that recordYield and claimYield gas costs are O(1) —
-///         independent of the number of depositors in the vault.
-///
-///         These tests do NOT require a live Aave connection; a fork is used only
-///         to ensure identical EVM context to mainnet. The actual yield is simulated
-///         with MockERC20.
-///
-///         If either function's gas scales with depositor count, the accumulator
-///         model has regressed to a loop-based path — file as critical.
-contract PayoutRouterGasForkTest is ForkBase {
+contract ForkTest09_PayoutRouterGas is ForkBase {
     PayoutRouter internal router;
     MockERC20 internal asset;
 

@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   FuzzTest04_Vault
+ * @author  GIVE Labs
+ * @notice  Stateful property-based fuzzing for GiveVault4626 deposit/redeem cycle
+ * @dev     Tests multi-step vault interactions with arbitrary amounts and adapters:
+ *          - Deposit: arbitrary amount deposited, share minting, adapter investment
+ *          - Harvest: arbitrary yield from adapter, share accumulator update
+ *          - Redeem: arbitrary share burns, divest from adapter, user asset return
+ *          - Invariants: totalSupply consistency, underlying asset tracking, adapter sync
+ */
+
 import {Base02_DeployVaultsAndAdapters} from "../base/Base02_DeployVaultsAndAdapters.t.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 
-contract FuzzVault is Base02_DeployVaultsAndAdapters {
+contract FuzzTest04_Vault is Base02_DeployVaultsAndAdapters {
     bytes32 private _fuzzStrategyId;
     bytes32 private _fuzzCampaignId;
 
@@ -58,7 +69,14 @@ contract FuzzVault is Base02_DeployVaultsAndAdapters {
 
     function testFuzz_deposit_withdraw_roundtrip(uint256 assets, address receiver) public {
         uint256 boundedAssets = bound(assets, 1e6, 100_000e6);
-        address user = receiver == address(0) ? donor1 : receiver;
+
+        // Exclude zero address and deployed system contracts that would cause
+        // self-referential calls (e.g. vault depositing into itself).
+        vm.assume(receiver != address(0));
+        vm.assume(receiver != address(usdcVault));
+        vm.assume(receiver != address(payoutRouter));
+        vm.assume(receiver != address(usdc));
+        address user = receiver;
 
         usdc.mint(user, boundedAssets);
 
@@ -68,7 +86,8 @@ contract FuzzVault is Base02_DeployVaultsAndAdapters {
         uint256 withdrawnAssets = usdcVault.redeem(mintedShares, user, user);
         vm.stopPrank();
 
-        assertGe(withdrawnAssets, boundedAssets);
+        // No-loss adapter: withdrawn amount must equal deposited amount within 1 wei rounding.
+        assertApproxEqAbs(withdrawnAssets, boundedAssets, 1);
     }
 
     function testFuzz_multiple_depositors(uint8 numUsers, uint256[8] calldata amounts) public {

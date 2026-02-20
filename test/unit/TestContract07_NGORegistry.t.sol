@@ -170,4 +170,49 @@ contract TestContract07_NGORegistry is Test {
         vm.expectRevert();
         ngoRegistry.recordDonation(ngo1, 1e6);
     }
+
+    function test_Contract07_Case09_executeCurrentNGOChange_noPendingReverts() public {
+        vm.expectRevert(NGORegistry.NoTimelockPending.selector);
+        ngoRegistry.executeCurrentNGOChange();
+    }
+
+    function test_Contract07_Case10_proposeCurrentNGO_invalidNGOReverts() public {
+        vm.prank(ngoManager);
+        vm.expectRevert(NGORegistry.NGONotApproved.selector);
+        ngoRegistry.proposeCurrentNGO(makeAddr("notApprovedNGO"));
+    }
+
+    function test_Contract07_Case11_emergencySetCurrentNGO_invalidNGOReverts() public {
+        vm.prank(protocolAdmin);
+        vm.expectRevert(NGORegistry.NGONotApproved.selector);
+        ngoRegistry.emergencySetCurrentNGO(makeAddr("notApprovedNGO"));
+    }
+
+    function test_Contract07_Case12_unauthorizedPauseUnpauseReverts() public {
+        vm.prank(makeAddr("unauthorized"));
+        vm.expectRevert();
+        ngoRegistry.pause();
+
+        vm.prank(makeAddr("unauthorized"));
+        vm.expectRevert();
+        ngoRegistry.unpause();
+    }
+
+    function test_Contract07_Case13_unauthorizedRemoveNGOReverts() public {
+        vm.prank(ngoManager);
+        ngoRegistry.addNGO(ngo1, "ipfs://ngo-1", keccak256("kyc-ngo1"), makeAddr("attestor"));
+
+        vm.prank(makeAddr("unauthorized"));
+        vm.expectRevert();
+        ngoRegistry.removeNGO(ngo1);
+    }
+
+    function test_Contract07_Case14_unauthorizedUpdateNGOReverts() public {
+        vm.prank(ngoManager);
+        ngoRegistry.addNGO(ngo1, "ipfs://ngo-1", keccak256("kyc-ngo1"), makeAddr("attestor"));
+
+        vm.prank(makeAddr("unauthorized"));
+        vm.expectRevert();
+        ngoRegistry.updateNGO(ngo1, "ipfs://new-cid", keccak256("kyc-v2"));
+    }
 }

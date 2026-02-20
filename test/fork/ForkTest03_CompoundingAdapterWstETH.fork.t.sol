@@ -7,10 +7,10 @@ import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {CompoundingAdapter} from "../../src/adapters/kinds/CompoundingAdapter.sol";
 
-/// @title CompoundingAdapterWstETHForkTest
+/// @title ForkTest03_CompoundingAdapterWstETH
 /// @notice Fork coverage for Phase 5.5 GAP-2 using live Base wstETH token.
 ///         This suite validates the adapter's current token-count accounting model.
-contract CompoundingAdapterWstETHForkTest is ForkBase {
+contract ForkTest03_CompoundingAdapterWstETH is ForkBase {
     bytes32 internal constant ADAPTER_ID = keccak256("fork.wsteth.compounding");
     uint256 internal constant INVEST_AMOUNT = 10 ether;
 

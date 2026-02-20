@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   ForkTest07_MultiVaultCampaign
+ * @author  GIVE Labs
+ * @notice  Fork test for Phase 5.5 GAP-4: single campaign, multiple vaults
+ * @dev     Tests vault preference management when multiple vaults support one campaign:
+ *          - Campaign vault reassignment based on performance or curator action
+ *          - Preference stale-clearing across vault instances
+ *          - Multi-vault yield aggregation and distribution
+ */
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
@@ -34,9 +44,7 @@ contract ForkMockCampaignRegistryMultiVault {
     }
 }
 
-/// @title MultiVaultCampaignForkTest
-/// @notice Fork tests for Phase 5.5 GAP-4: single campaign, multiple vaults.
-contract MultiVaultCampaignForkTest is ForkBase {
+contract ForkTest07_MultiVaultCampaign is ForkBase {
     event VaultReassigned(address indexed vault, bytes32 indexed oldCampaignId, bytes32 indexed newCampaignId);
 
     bytes32 internal constant CAMPAIGN_A = keccak256("campaign_a");

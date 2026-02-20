@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   ForkTest06_GiveVault
+ * @author  GIVE Labs
+ * @notice  End-to-end vault lifecycle test against live Aave V3 on Base mainnet
+ * @dev     Tests full vault cycle with real Aave integration:
+ *          - Deposit → Invest in Aave → Yield accrual
+ *          - Harvest → Yield distribution via PayoutRouter
+ *          - Redeem → Divest from Aave → Return to user
+ *          - Emergency shutdown and grace period flows
+ */
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
 import {DataTypes} from "@aave/core-v3/contracts/protocol/libraries/types/DataTypes.sol";
@@ -38,9 +49,7 @@ contract ForkMockCampaignRegistry {
     }
 }
 
-/// @title GiveVaultForkTest
-/// @notice Full end-to-end vault cycle against live Aave V3 on Base mainnet.
-contract GiveVaultForkTest is ForkBase {
+contract ForkTest06_GiveVault is ForkBase {
     GiveVault4626 internal vault;
     AaveAdapter internal adapter;
     PayoutRouter internal router;

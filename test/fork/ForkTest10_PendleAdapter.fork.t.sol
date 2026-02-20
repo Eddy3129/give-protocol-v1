@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   ForkTest10_PendleAdapter
+ * @author  GIVE Labs
+ * @notice  Fork test for Pendle Protocol Principal Token (PT) adapter integration
+ * @dev     Tests real PT market interactions on Base mainnet fork:
+ *          - PT invest (deposit asset, mint PT) via Pendle Router
+ *          - PT divest (redeem PT, receive asset) via Pendle Router
+ *          - Slippage validation and error handling
+ *          Requires PENDLE_BASE_MARKET and PENDLE_BASE_PT environment variables.
+ */
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {PendleAdapter} from "../../src/adapters/kinds/PendleAdapter.sol";
 
-contract PendleAdapterForkTest is ForkBase {
+contract ForkTest10_PendleAdapter is ForkBase {
     bytes32 internal constant ADAPTER_ID = keccak256("fork.pendle.adapter");
 
     IERC20 internal usdc;

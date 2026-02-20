@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   FuzzTest03_PayoutRouter
+ * @author  GIVE Labs
+ * @notice  Stateless property-based fuzzing for PayoutRouter accumulator logic
+ * @dev     Tests core yield distribution properties with arbitrary inputs:
+ *          - recordYield: arbitrary asset amounts and delta-per-share updates
+ *          - claimYield: arbitrary user list, beneficiary splits, and preference allocation
+ *          - Fee enforcement: protocol fee must not exceed MAX_FEE_BPS of recorded yield
+ *          - Accumulator integrity: per-share delta is monotonically non-decreasing
+ */
+
 import "forge-std/Test.sol";
 
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
@@ -56,7 +67,7 @@ contract FuzzMockCampaignRegistry {
     }
 }
 
-contract FuzzPayoutRouter is Test {
+contract FuzzTest03_PayoutRouter is Test {
     PayoutRouter private payoutRouter;
     MockERC20 private usdc;
     FuzzMockACL private acl;

@@ -92,6 +92,15 @@ contract PayoutRouter is
         address payoutTo;
     }
 
+    /// @dev Groups claimYield inputs to avoid stack-too-deep in _calculateAllocations
+    struct CalcParams {
+        bytes32 campaignId;
+        address defaultBeneficiary;
+        address user;
+        address vault;
+        uint256 userYield;
+    }
+
     // ============================================
     // STATE VARIABLES
     // ============================================
@@ -467,8 +476,16 @@ contract PayoutRouter is
             emit StalePrefCleared(user, vault);
         }
 
-        AllocationResult memory allocation =
-            _calculateAllocations(s, campaignId, campaign.payoutRecipient, user, vault, userYield);
+        AllocationResult memory allocation = _calculateAllocations(
+            s,
+            CalcParams({
+                campaignId: campaignId,
+                defaultBeneficiary: campaign.payoutRecipient,
+                user: user,
+                vault: vault,
+                userYield: userYield
+            })
+        );
 
         _executeAllocationPayouts(s, asset, campaignId, campaign.payoutRecipient, user, vault, allocation);
         emit YieldClaimed(
@@ -488,24 +505,21 @@ contract PayoutRouter is
 
     // ===== Internal helpers =====
 
-    function _calculateAllocations(
-        GiveTypes.PayoutRouterState storage s,
-        bytes32 campaignId,
-        address defaultBeneficiary,
-        address user,
-        address vault,
-        uint256 userYield
-    ) private view returns (AllocationResult memory allocation) {
-        allocation.protocolAmount = (userYield * s.feeBps) / 10_000;
-        uint256 netYield = userYield - allocation.protocolAmount;
+    function _calculateAllocations(GiveTypes.PayoutRouterState storage s, CalcParams memory p)
+        private
+        view
+        returns (AllocationResult memory allocation)
+    {
+        allocation.protocolAmount = (p.userYield * s.feeBps) / 10_000;
+        uint256 netYield = p.userYield - allocation.protocolAmount;
 
-        GiveTypes.CampaignPreference memory pref = s.userPreferences[user][vault];
-        if (pref.campaignId != bytes32(0) && pref.campaignId != campaignId) {
-            revert CampaignMismatch(campaignId, pref.campaignId);
+        GiveTypes.CampaignPreference memory pref = s.userPreferences[p.user][p.vault];
+        if (pref.campaignId != bytes32(0) && pref.campaignId != p.campaignId) {
+            revert CampaignMismatch(p.campaignId, pref.campaignId);
         }
 
         uint8 allocationPercentage = pref.allocationPercentage == 0 ? 100 : pref.allocationPercentage;
-        allocation.payoutTo = pref.beneficiary == address(0) ? defaultBeneficiary : pref.beneficiary;
+        allocation.payoutTo = pref.beneficiary == address(0) ? p.defaultBeneficiary : pref.beneficiary;
 
         allocation.campaignAmount = (netYield * allocationPercentage) / 100;
         allocation.beneficiaryAmount = netYield - allocation.campaignAmount;

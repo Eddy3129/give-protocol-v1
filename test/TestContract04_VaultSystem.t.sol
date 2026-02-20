@@ -409,6 +409,113 @@ contract TestContract04_VaultSystem is Test {
     }
 
     // ============================================
+    // Branch Gap Coverage (Update J)
+    // ============================================
+
+    function _deployVault() internal returns (GiveVault4626) {
+        bytes memory initData = abi.encodeCall(
+            GiveVault4626.initialize,
+            (address(usdc), "Give Vault USDC", "gvUSDC", vaultAdmin, address(aclManager), address(giveVaultImpl))
+        );
+        return GiveVault4626(payable(address(new ERC1967Proxy(address(giveVaultImpl), initData))));
+    }
+
+    function test_Contract04_Case10_setInvestPaused_skipsAdapterOnDeposit() public {
+        vault1 = _deployVault();
+
+        vm.prank(vaultAdmin);
+        vault1.setInvestPaused(true);
+        assertTrue(vault1.investPaused());
+
+        // Deposit should not revert — investPaused only skips _investExcessCash, not deposit itself
+        vm.startPrank(user1);
+        usdc.approve(address(vault1), 100e6);
+        uint256 shares = vault1.deposit(100e6, user1);
+        vm.stopPrank();
+
+        assertGt(shares, 0, "deposit should succeed even when invest paused");
+        // All funds remain as cash — not invested
+        assertEq(vault1.getCashBalance(), 100e6, "cash balance should equal full deposit");
+    }
+
+    function test_Contract04_Case11_setHarvestPaused_blockHarvest() public {
+        vault1 = _deployVault();
+
+        vm.prank(vaultAdmin);
+        vault1.setHarvestPaused(true);
+        assertTrue(vault1.harvestPaused());
+
+        vm.expectRevert(GiveVault4626.HarvestPaused.selector);
+        vault1.harvest();
+    }
+
+    function test_Contract04_Case12_setCashBufferBps_aboveMaxReverts() public {
+        vault1 = _deployVault();
+        uint256 tooHigh = vault1.MAX_CASH_BUFFER_BPS() + 1;
+
+        vm.prank(vaultAdmin);
+        vm.expectRevert(GiveVault4626.CashBufferTooHigh.selector);
+        vault1.setCashBufferBps(tooHigh);
+    }
+
+    function test_Contract04_Case13_setSlippageBps_aboveMaxReverts() public {
+        vault1 = _deployVault();
+        uint256 tooHigh = vault1.MAX_SLIPPAGE_BPS() + 1;
+
+        vm.prank(vaultAdmin);
+        vm.expectRevert(GiveVault4626.InvalidSlippageBps.selector);
+        vault1.setSlippageBps(tooHigh);
+    }
+
+    function test_Contract04_Case14_setMaxLossBps_aboveMaxReverts() public {
+        vault1 = _deployVault();
+        uint256 tooHigh = vault1.MAX_LOSS_BPS() + 1;
+
+        vm.prank(vaultAdmin);
+        vm.expectRevert(GiveVault4626.InvalidMaxLossBps.selector);
+        vault1.setMaxLossBps(tooHigh);
+    }
+
+    function test_Contract04_Case15_emergencyPause_setsGracePeriodTimestamp() public {
+        vault1 = _deployVault();
+
+        uint256 before = block.timestamp;
+        vm.prank(vaultAdmin);
+        vault1.emergencyPause();
+
+        assertTrue(vault1.paused(), "vault should be paused");
+        assertTrue(vault1.emergencyShutdown(), "emergencyShutdown flag should be set");
+        assertEq(vault1.emergencyActivatedAt(), uint64(before), "emergencyActivatedAt should be set");
+        assertTrue(vault1.investPaused(), "investPaused should be set");
+        assertTrue(vault1.harvestPaused(), "harvestPaused should be set");
+    }
+
+    function test_Contract04_Case16_resumeFromEmergency_clearsState() public {
+        vault1 = _deployVault();
+
+        vm.prank(vaultAdmin);
+        vault1.emergencyPause();
+
+        vm.prank(vaultAdmin);
+        vault1.resumeFromEmergency();
+
+        assertFalse(vault1.paused(), "vault should be unpaused");
+        assertFalse(vault1.emergencyShutdown(), "emergencyShutdown should be cleared");
+        assertEq(vault1.emergencyActivatedAt(), 0, "emergencyActivatedAt should be zero");
+        assertFalse(vault1.investPaused(), "investPaused should be cleared");
+        assertFalse(vault1.harvestPaused(), "harvestPaused should be cleared");
+    }
+
+    function test_Contract04_Case17_forceClearAdapter_withFundsReverts() public {
+        vault1 = _deployVault();
+        // No adapter set → forceClearAdapter should succeed (nothing to clear)
+        vm.prank(vaultAdmin);
+        vault1.forceClearAdapter(); // should not revert
+
+        assertEq(address(vault1.activeAdapter()), address(0));
+    }
+
+    // ============================================
     // Deterministic Deployment Test
     // ============================================
 

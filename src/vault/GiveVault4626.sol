@@ -185,17 +185,24 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
             revert ZeroAddress();
         }
 
+        _initParents(asset_, name_, symbol_, acl_);
+        _initRolesAndConfig(admin_, implementation_, asset_);
+    }
+
+    /// @dev Calls parent initializers in a separate frame to reduce stack depth in initialize()
+    function _initParents(address asset_, string memory name_, string memory symbol_, address acl_) private {
         __ERC4626_init(IERC20(asset_));
         __ERC20_init(name_, symbol_);
         __VaultTokenBase_init(acl_);
         __UUPSUpgradeable_init();
+    }
 
-        // Grant roles to admin
+    /// @dev Grants roles and writes initial config in a separate frame to reduce stack depth in initialize()
+    function _initRolesAndConfig(address admin_, address implementation_, address asset_) private {
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
         _grantRole(VAULT_MANAGER_ROLE, admin_);
         _grantRole(PAUSER_ROLE, admin_);
 
-        // Initialize vault configuration
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         cfg.id = vaultId();
         cfg.proxy = address(this);

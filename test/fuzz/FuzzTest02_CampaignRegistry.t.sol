@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   FuzzTest02_CampaignRegistry
+ * @author  GIVE Labs
+ * @notice  Stateless property-based fuzzing for CampaignRegistry lifecycle
+ * @dev     Tests campaign creation, approval, and checkpoint flows with arbitrary inputs:
+ *          - submitCampaign: arbitrary campaign IDs, targets, min stakes, deadlines
+ *          - approveCampaign: role checks, status transitions, metadata guards
+ *          - scheduleCheckpoint: timelock enforcement, checkpoint state tracking
+ *          - voteOnCheckpoint: stake-weighted votes, quorum validation
+ *          - finalizeCheckpoint: pass/fail outcomes, payout halt/resume logic
+ */
+
 import "forge-std/Test.sol";
 
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
@@ -113,7 +125,7 @@ contract FuzzStrategyRegistry {
     }
 }
 
-contract FuzzCampaignRegistry is Test {
+contract FuzzTest02_CampaignRegistry is Test {
     CampaignRegistry private registry;
     FuzzACL private acl;
     FuzzStrategyRegistry private strategyRegistry;

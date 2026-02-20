@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 
 import {VaultHandler} from "./handlers/VaultHandler.sol";
 
-/// @title InvariantVault
+/// @title InvariantTest03_Vault
 /// @notice Verifies core ERC4626 accounting properties of GiveVault4626.
 ///         No yield adapter is used — all assets remain as vault cash — so
 ///         the only source of totalAssets increase is explicit injectYield calls.
@@ -15,7 +15,7 @@ import {VaultHandler} from "./handlers/VaultHandler.sol";
 ///   I2. convertToAssets(totalSupply) <= totalAssets + 1 (no phantom assets).
 ///   I3. Sum of all tracked actor share balances == totalSupply (share conservation).
 ///   I4. previewRedeem(unit) >= unit (share price never falls below initial 1:1 rate).
-contract InvariantVault is Test {
+contract InvariantTest03_Vault is Test {
     VaultHandler internal handler;
 
     function setUp() public {

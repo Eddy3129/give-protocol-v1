@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 
 import {PayoutRouterHandler} from "./handlers/PayoutRouterHandler.sol";
 
-/// @title InvariantPayoutRouter
+/// @title InvariantTest02_PayoutRouter
 /// @notice Verifies core safety properties of the PayoutRouter accumulator model.
 ///
 /// Properties tested:
@@ -14,7 +14,7 @@ import {PayoutRouterHandler} from "./handlers/PayoutRouterHandler.sol";
 ///   I3. Protocol fees are bounded by MAX_FEE_BPS of total recorded yield.
 ///   I4. The per-share accumulator is monotonically non-decreasing.
 ///   I5. Pending yield across all actors cannot exceed recorded minus claimed.
-contract InvariantPayoutRouter is Test {
+contract InvariantTest02_PayoutRouter is Test {
     PayoutRouterHandler internal handler;
 
     function setUp() public {

@@ -400,4 +400,130 @@ contract TestContract06_PayoutRouter is Test {
         vm.expectRevert();
         payoutRouter.recordYield(address(usdc), 100 ether);
     }
+
+    // ============================================
+    // BRANCH GAP COVERAGE (Update J)
+    // ============================================
+
+    function test_Contract06_Case19_cancelFeeChange_happyPath() public {
+        uint256 newFeeBps = 500;
+        address newRecipient = makeAddr("newRecipient");
+
+        vm.prank(protocolAdmin);
+        payoutRouter.proposeFeeChange(newRecipient, newFeeBps);
+
+        // Nonce 0 should exist
+        (,,, bool exists) = payoutRouter.getPendingFeeChange(0);
+        assertTrue(exists);
+
+        vm.prank(protocolAdmin);
+        vm.expectEmit(true, false, false, false);
+        emit PayoutRouter.FeeChangeCancelled(0);
+        payoutRouter.cancelFeeChange(0);
+
+        // Nonce 0 should be gone
+        (,,, bool existsAfter) = payoutRouter.getPendingFeeChange(0);
+        assertFalse(existsAfter);
+        // Original fee unchanged
+        assertEq(payoutRouter.feeBps(), FEE_BPS);
+    }
+
+    function test_Contract06_Case20_cancelFeeChange_nonExistentNonceReverts() public {
+        vm.prank(protocolAdmin);
+        vm.expectRevert();
+        payoutRouter.cancelFeeChange(999);
+    }
+
+    function test_Contract06_Case21_cancelFeeChange_nonAdminReverts() public {
+        uint256 newFeeBps = 500;
+        address newRecipient = makeAddr("newRecipient");
+
+        vm.prank(protocolAdmin);
+        payoutRouter.proposeFeeChange(newRecipient, newFeeBps);
+
+        vm.prank(makeAddr("rando"));
+        vm.expectRevert();
+        payoutRouter.cancelFeeChange(0);
+    }
+
+    function test_Contract06_Case22_emergencyWithdraw_transfersToRecipient() public {
+        usdc.mint(address(payoutRouter), 50 ether);
+
+        address recipient = makeAddr("recipient");
+        vm.prank(protocolAdmin);
+        payoutRouter.emergencyWithdraw(address(usdc), recipient, 50 ether);
+
+        assertEq(usdc.balanceOf(recipient), 50 ether);
+        assertEq(usdc.balanceOf(address(payoutRouter)), 0);
+    }
+
+    function test_Contract06_Case23_emergencyWithdraw_nonAdminReverts() public {
+        usdc.mint(address(payoutRouter), 50 ether);
+
+        vm.prank(makeAddr("rando"));
+        vm.expectRevert();
+        payoutRouter.emergencyWithdraw(address(usdc), makeAddr("recipient"), 50 ether);
+    }
+
+    function test_Contract06_Case24_setProtocolTreasury_updatesAddress() public {
+        address newTreasury = makeAddr("newTreasury");
+        vm.prank(protocolAdmin);
+        vm.expectEmit(true, true, false, false);
+        emit PayoutRouter.ProtocolTreasuryUpdated(protocolTreasury, newTreasury);
+        payoutRouter.setProtocolTreasury(newTreasury);
+
+        assertEq(payoutRouter.protocolTreasury(), newTreasury);
+    }
+
+    function test_Contract06_Case25_pauseUnpause_roundTrip() public {
+        vm.prank(protocolAdmin);
+        payoutRouter.pause();
+        assertTrue(payoutRouter.paused());
+
+        vm.prank(protocolAdmin);
+        payoutRouter.unpause();
+        assertFalse(payoutRouter.paused());
+    }
+
+    function test_Contract06_Case26_claimYield_whenPausedReverts() public {
+        vm.prank(mockVault);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
+
+        usdc.mint(address(payoutRouter), 100 ether);
+
+        vm.prank(mockVault);
+        payoutRouter.recordYield(address(usdc), 100 ether);
+
+        vm.prank(protocolAdmin);
+        payoutRouter.pause();
+
+        vm.prank(supporter1);
+        vm.expectRevert();
+        payoutRouter.claimYield(mockVault, address(usdc));
+    }
+
+    function test_Contract06_Case27_claimYield_zeroAccumulatedYieldNoOps() public {
+        // supporter1 has shares but no yield has been recorded — claim should return 0
+        vm.prank(mockVault);
+        payoutRouter.updateUserShares(supporter1, 100 ether);
+
+        vm.prank(supporter1);
+        uint256 claimed = payoutRouter.claimYield(mockVault, address(usdc));
+        assertEq(claimed, 0);
+    }
+
+    function test_Contract06_Case28_proposeFeeChange_decreaseIsInstant() public {
+        // Current fee is FEE_BPS (250). Proposing lower should apply immediately.
+        uint256 lowerFee = 100;
+        address newRecipient = makeAddr("newRecipient");
+
+        vm.prank(protocolAdmin);
+        payoutRouter.proposeFeeChange(newRecipient, lowerFee);
+
+        // Applied instantly — no pending change at nonce 0
+        assertEq(payoutRouter.feeBps(), lowerFee);
+        assertEq(payoutRouter.feeRecipient(), newRecipient);
+        (,,, bool exists) = payoutRouter.getPendingFeeChange(0);
+        assertFalse(exists);
+    }
 }

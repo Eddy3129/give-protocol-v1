@@ -47,25 +47,30 @@ These are the workers. Each adapter knows how to talk to a specific DeFi protoco
 ## Core Components
 
 ### **Governance**
+
 - **ACLManager** - Centralized role management for all protocol permissions
 - All contracts check roles via ACL (no standalone Ownable)
 
 ### **Registries**
+
 - **CampaignRegistry** - Campaign submission, approval, checkpoints, governance voting
 - **StrategyRegistry** - Yield strategy registration, lifecycle (Active → FadingOut → Deprecated)
 - **NGORegistry** - Verified charity registration and metadata
 
 ### **Vaults**
+
 - **GiveVault4626** - Base ERC-4626 vault with yield harvesting
 - **CampaignVault4626** - Campaign-specific vault with fundraising limits
 - **CampaignVaultFactory** - Deploys campaign vaults as UUPS upgradeable proxies
 - **StrategyManager** - Manages multiple adapters, auto-rebalancing, performance tracking
 
 ### **Yield Distribution**
+
 - **PayoutRouter** - Distributes harvested yield to campaigns, supporters, protocol treasury
 - **Checkpoint system** - Halts payouts if governance milestones fail
 
 ### **Modules**
+
 - **RiskModule** - Risk profiles (LTV, liquidation thresholds, caps)
 - **VaultModule** - Vault configuration (cash buffer, slippage, max loss)
 - **AdapterModule** - Adapter registry and validation
@@ -77,6 +82,7 @@ These are the workers. Each adapter knows how to talk to a specific DeFi protoco
 ## Development
 
 ### **Setup**
+
 ```bash
 # Install dependencies
 forge install
@@ -101,6 +107,7 @@ forge test --gas-report
 ```
 
 ### **Project Structure**
+
 ```
 src/
 ├── governance/       ACLManager
@@ -145,6 +152,7 @@ test/
 ## Deployment
 
 ### **Testnet Deployment (Base Sepolia)**
+
 ```bash
 # Phase 1: Core infrastructure
 forge script script/Deploy01_Infrastructure.s.sol \
@@ -166,6 +174,7 @@ forge script script/Deploy03_Initialize.s.sol \
 ```
 
 ### **Add a Campaign**
+
 ```bash
 # Set campaign parameters in .env
 export CAMPAIGN_NAME="Climate Action Fund"
@@ -181,6 +190,7 @@ forge script script/operations/AddCampaign.s.sol \
 ```
 
 ### **Upgrade Contracts**
+
 ```bash
 # Upgrade ACLManager
 forge script script/Upgrade.s.sol \
@@ -202,6 +212,7 @@ forge script script/Upgrade.s.sol \
 ## Key Concepts
 
 ### **Campaign Lifecycle**
+
 1. **Submitted** - Campaign creator submits proposal (0.005 ETH deposit)
 2. **Active** - Campaign admin approves campaign
 3. **Successful** - Target stake reached
@@ -209,12 +220,14 @@ forge script script/Upgrade.s.sol \
 5. **Completed** - Campaign ends, final payout
 
 ### **Checkpoint Governance**
+
 - Supporters vote on milestones (proportional to stake)
 - Requires quorum (configurable, e.g., 50%)
 - **Failed checkpoint** → Halts payouts until resolved
 - **Passed checkpoint** → Resumes yield distribution
 
 ### **Yield Adapter Kinds**
+
 - **CompoundingValue** - Auto-compounds profit (e.g., stETH)
 - **BalanceGrowth** - Balance increases over time (e.g., aTokens)
 - **FixedMaturityToken** - Principal tokens with maturity date
@@ -222,6 +235,7 @@ forge script script/Upgrade.s.sol \
 - **Manual** - Off-chain management with on-chain attestation
 
 ### **Role System**
+
 ```
 ROLE_UPGRADER           Upgrade UUPS contracts
 ROLE_PROTOCOL_ADMIN     Configure protocol parameters
@@ -238,11 +252,13 @@ VAULT_MANAGER_ROLE      Manage vault adapters and settings
 ## Security
 
 ### **Upgradeability**
+
 - All core contracts use **UUPS proxy pattern** (not EIP-1167 clones)
 - Upgrades require `ROLE_UPGRADER` via ACLManager
 - State verification on every upgrade (storage invariants checked)
 
 ### **Emergency Controls**
+
 - **Emergency pause** - Admin can pause deposits/harvests
 - **Grace period** - 24h delay before emergency withdrawals allowed
 - **User emergency withdraw** - Vault owner can withdraw shares after grace period
@@ -251,27 +267,86 @@ VAULT_MANAGER_ROLE      Manage vault adapters and settings
 
 ## Testing
 
+### **Test Suite Structure**
+
+The test suite is formally organized by scope and strategy:
+
+| Category        | Location            | Purpose                                            | Naming Convention            |
+| --------------- | ------------------- | -------------------------------------------------- | ---------------------------- |
+| **Base**        | `test/base/`        | Shared deployment fixtures, 3-phase provisioning   | `Base0{1,2,3}_Deploy*.t.sol` |
+| **Unit**        | `test/unit/`        | Single-contract functionality, property validation | `TestContract{NN}_*.t.sol`   |
+| **Integration** | `test/integration/` | Full workflow cycles, end-to-end scenarios         | `TestAction{NN}_*.t.sol`     |
+| **Fork**        | `test/fork/`        | Live protocol interactions (Aave, Pendle, etc.)    | `ForkTest{NN}_*.fork.t.sol`  |
+| **Fuzz**        | `test/fuzz/`        | Stateless/stateful property testing                | `FuzzTest{NN}_*.t.sol`       |
+| **Invariant**   | `test/invariant/`   | Multi-step protocol invariants                     | `InvariantTest{NN}_*.t.sol`  |
+
+**Test File Header Convention:** All test files include comprehensive documentation:
+
+```solidity
+/**
+ * @title   TestName
+ * @author  GIVE Labs
+ * @notice  Brief summary of test scope
+ * @dev     Detailed coverage breakdown (what is tested and how)
+ */
+```
+
+### **Quick Reference Commands**
+
 ```bash
-# Full test suite
+# Default: unit + integration (skip fork/fuzz/invariant)
 forge test
 
-# Integration tests only
-forge test --match-path test/integration/
+# Full suite (includes all tests)
+FOUNDRY_PROFILE=full forge test
 
-# Specific test
-forge test --match-test test_Contract01_Case01_deploymentState
+# By category
+FOUNDRY_PROFILE=fork forge test          # Fork tests only
+FOUNDRY_PROFILE=fuzz forge test          # Fuzz tests only
+FOUNDRY_PROFILE=invariant forge test     # Invariant tests only
+forge test --match-path test/integration # Integration tests only
 
-# Coverage report
-forge coverage
+# Fuzz with custom parameters
+FOUNDRY_PROFILE=fuzz forge test --fuzz-runs 256
+
+# Invariant quick-check
+FOUNDRY_PROFILE=invariant FOUNDRY_INVARIANT_RUNS=64 FOUNDRY_INVARIANT_DEPTH=200 forge test
+
+# Coverage (unit + integration only, no fork/fuzz/invariant)
+FOUNDRY_PROFILE=coverage forge coverage --ir-minimum --report summary \
+  --no-match-path 'test/fork/**:test/fuzz/**:test/invariant/**'
+
+# Full coverage (includes everything)
+FOUNDRY_PROFILE=coverage forge coverage --ir-minimum
+
+# Specific test contract
+forge test --match-contract TestContract01_ACLManager -v
+
+# Specific test case
+forge test --match-test test_Case01_deploymentState -v
 
 # Gas snapshot
 forge snapshot
 ```
 
-### **Test Organization**
-- **Unit tests** - Individual contract functionality
-- **Integration tests** - Full campaign lifecycle workflows
-- **Base environments** - Reusable deployment fixtures
+### **Test Count Summary**
+
+- **Base:** 3 env fixtures (Base01, Base02, Base03)
+- **Unit + Integration (default run):** 428 tests passed, 0 failed, 0 skipped
+- **Fork:** 10 fork suites for live protocol validation
+- **Fuzz:** 4 stateless/stateful fuzz suites
+- **Invariant:** 3 multi-step invariant handlers
+- **Total suites:** 23 in default profile (unit + integration)
+
+### **Coverage Targets (Update M)**
+
+| Contract      | Lines  | Statements | Branches   | Functions |
+| ------------- | ------ | ---------- | ---------- | --------- |
+| overall       | 60.43% | 61.00%     | **49.23%** | 62.62%    |
+| PayoutRouter  | 88.72% | 88.85%     | **87.80%** | 88.10%    |
+| GiveVault4626 | 78.79% | 81.07%     | **83.05%** | 71.70%    |
+
+**Note:** `--ir-minimum` flag required permanently due to OZ's `__ERC20_init` inline assembly stack depth collision; not removable without modifying OZ internals.
 
 ---
 

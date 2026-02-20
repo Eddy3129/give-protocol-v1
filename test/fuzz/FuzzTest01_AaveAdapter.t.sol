@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   FuzzTest01_AaveAdapter
+ * @author  GIVE Labs
+ * @notice  Stateless property-based fuzzing for AaveAdapter invest/divest logic
+ * @dev     Tests core adapter mechanics against simulated Aave pool (MockAavePool):
+ *          - invest: arbitrary USDC amounts minted as aTokens
+ *          - divest: arbitrary aToken burn + USDC transfer
+ *          - Loss handling: divest with insufficient Aave pool balance
+ *          - Slippage: user-supplied max-loss enforced during divest
+ */
+
 import "forge-std/Test.sol";
 
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {MockAavePool} from "../../src/mocks/MockAavePool.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
 
-contract FuzzAaveAdapter is Test {
+contract FuzzTest01_AaveAdapter is Test {
     MockERC20 private usdc;
     MockAavePool private pool;
     AaveAdapter private adapter;

@@ -6,6 +6,9 @@ test = "test"
 cache_path = "cache"
 broadcast = "broadcast"
 script = "script"
+no_match_path = "test/fork/**:test/fuzz/**:test/invariant/**"
+no_match_test = "testFuzz|invariant_"
+no_match_contract = "Fork|ForkTest"
 
 # Solidity configuration
 solc = "0.8.34"
@@ -47,6 +50,29 @@ via_ir = true
 optimizer_runs = 200
 verbosity = 2
 
+[profile.full]
+no_match_path = "__never_match__/**"
+no_match_test = "__never_match_test__"
+no_match_contract = "__never_match_contract__"
+
+[profile.fork]
+match_path = "test/fork/**"
+no_match_path = "__never_match__/**"
+no_match_test = "__never_match_test__"
+no_match_contract = "__never_match_contract__"
+
+[profile.fuzz]
+match_path = "test/fuzz/**"
+no_match_path = "__never_match__/**"
+no_match_test = "__never_match_test__"
+no_match_contract = "__never_match_contract__"
+
+[profile.invariant]
+match_path = "test/invariant/**"
+no_match_path = "__never_match__/**"
+no_match_test = "__never_match_test__"
+no_match_contract = "__never_match_contract__"
+
 [profile.dev-fast]
 optimizer = true
 via_ir = true
@@ -60,9 +86,16 @@ via_ir = true
 bytecode_hash = "ipfs"
 cbor_metadata = true
 
+# Coverage profile: optimizer off + ir-minimum avoids stack-too-deep.
+# Recommended quick coverage command:
+# forge coverage --ir-minimum --exclude-tests --no-match-path "test/fork/**:test/fuzz/**:test/invariant/**"
+# LCOV artifact command:
+# FOUNDRY_PROFILE=coverage forge coverage --ir-minimum --exclude-tests --report lcov --no-match-path "test/fork/**:test/fuzz/**:test/invariant/**"
 [profile.coverage]
 gas_reports = []
 optimizer = false
+via_ir = false
+no_match_path = "test/fork/**:test/fuzz/**:test/invariant/**"
 
 [invariant]
 runs = 256

@@ -10,6 +10,7 @@ import "../src/adapters/kinds/ClaimableYieldAdapter.sol";
 import "../src/adapters/kinds/ManualManageAdapter.sol";
 import "../src/mocks/MockYieldAdapter.sol";
 import "../src/mocks/MockERC20.sol";
+import "../src/utils/GiveErrors.sol";
 
 /**
  * @title TestContract05_YieldAdapters
@@ -85,6 +86,48 @@ contract TestContract05_YieldAdapters is Test {
         uint256 returned = adapter.divest(110 ether);
 
         assertEq(returned, 110 ether);
+        assertEq(adapter.totalDeposits(), 0);
+    }
+
+    function test_Contract05_Case04b_GrowthAdapter_investZeroReverts() public {
+        GrowthAdapter adapter = new GrowthAdapter(ADAPTER_ID, address(asset), vault);
+
+        vm.prank(vault);
+        vm.expectRevert(GiveErrors.InvalidInvestAmount.selector);
+        adapter.invest(0);
+    }
+
+    function test_Contract05_Case04c_GrowthAdapter_setGrowthIndexBelowOneReverts() public {
+        GrowthAdapter adapter = new GrowthAdapter(ADAPTER_ID, address(asset), vault);
+
+        vm.expectRevert("growth < 1");
+        adapter.setGrowthIndex(1e18 - 1);
+    }
+
+    function test_Contract05_Case04d_GrowthAdapter_divestCapsAtTotalDeposits() public {
+        GrowthAdapter adapter = new GrowthAdapter(ADAPTER_ID, address(asset), vault);
+
+        asset.mint(address(adapter), 200 ether);
+
+        vm.prank(vault);
+        adapter.invest(100 ether);
+
+        adapter.setGrowthIndex(2e18);
+
+        vm.prank(vault);
+        uint256 returned = adapter.divest(300 ether);
+
+        assertEq(returned, 200 ether);
+        assertEq(adapter.totalDeposits(), 0);
+    }
+
+    function test_Contract05_Case04e_GrowthAdapter_divestZeroReturnWhenNoDeposits() public {
+        GrowthAdapter adapter = new GrowthAdapter(ADAPTER_ID, address(asset), vault);
+
+        vm.prank(vault);
+        uint256 returned = adapter.divest(1 ether);
+
+        assertEq(returned, 0);
         assertEq(adapter.totalDeposits(), 0);
     }
 

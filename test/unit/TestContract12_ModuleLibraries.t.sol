@@ -134,6 +134,20 @@ contract TestContract12_ModuleLibraries is Test {
         core.configureRisk(riskId, riskCfg);
     }
 
+    function _validRiskConfig() private view returns (RiskModule.RiskConfigInput memory cfg) {
+        cfg = RiskModule.RiskConfigInput({
+            id: riskId,
+            ltvBps: 7000,
+            liquidationThresholdBps: 8000,
+            liquidationPenaltyBps: 500,
+            borrowCapBps: 7000,
+            depositCapBps: 10000,
+            dataHash: bytes32(uint256(1)),
+            maxDeposit: 1_000_000e6,
+            maxBorrow: 700_000e6
+        });
+    }
+
     function test_Contract12_Case01_vaultAndAdapterConfig_pathsWork() public {
         _configureVault();
 
@@ -211,5 +225,169 @@ contract TestContract12_ModuleLibraries is Test {
         vm.prank(makeAddr("unauthorized"));
         vm.expectRevert();
         core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Pause, bytes(""));
+    }
+
+    // ============================================
+    // Branch Gap Coverage — RiskModule (Update J)
+    // ============================================
+
+    function test_Contract12_Case05_riskModule_assignRiskSyncsMaxDeposit() public {
+        _configureVault();
+
+        // Configure risk with a specific maxDeposit
+        uint256 maxDeposit = 1_000_000e6;
+        RiskModule.RiskConfigInput memory cfg = RiskModule.RiskConfigInput({
+            id: riskId,
+            ltvBps: 5000,
+            liquidationThresholdBps: 6000,
+            liquidationPenaltyBps: 500,
+            borrowCapBps: 5000,
+            depositCapBps: 7000,
+            dataHash: bytes32(0),
+            maxDeposit: maxDeposit,
+            maxBorrow: maxDeposit / 2
+        });
+
+        vm.prank(riskManager);
+        core.configureRisk(riskId, cfg);
+
+        vm.prank(riskManager);
+        core.assignVaultRisk(vaultId, riskId);
+
+        // Verify the limits were synced to the mock vault
+        assertEq(mockVault.syncedMaxDeposit(), maxDeposit, "maxDeposit should be synced");
+        assertEq(mockVault.syncedMaxBorrow(), maxDeposit / 2, "maxBorrow should be synced");
+        assertEq(mockVault.syncedRiskId(), riskId, "riskId should be synced");
+    }
+
+    function test_Contract12_Case06_riskModule_configureRiskValidatesParams() public {
+        // maxBorrow > maxDeposit should revert with InvalidRiskParameters
+        RiskModule.RiskConfigInput memory cfg = RiskModule.RiskConfigInput({
+            id: riskId,
+            ltvBps: 5000,
+            liquidationThresholdBps: 6000,
+            liquidationPenaltyBps: 500,
+            borrowCapBps: 5000,
+            depositCapBps: 7000,
+            dataHash: bytes32(0),
+            maxDeposit: 1000e6,
+            maxBorrow: 2000e6 // borrow > deposit → invalid
+        });
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    // ============================================
+    // Branch Gap Coverage — EmergencyModule (Update J)
+    // ============================================
+
+    function test_Contract12_Case07_emergencyModule_pauseResumeCycle() public {
+        _configureVault();
+
+        // Pause
+        vm.prank(emergencyManager);
+        core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Pause, bytes(""));
+        assertTrue(mockVault.emergencyPaused(), "should be paused");
+
+        // Unpause
+        vm.prank(emergencyManager);
+        core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Unpause, bytes(""));
+        assertFalse(mockVault.emergencyPaused(), "should be unpaused");
+    }
+
+    function test_Contract12_Case08_emergencyModule_withdrawClearsAdapter() public {
+        _configureVault();
+
+        // Pause first (required to withdraw)
+        vm.prank(emergencyManager);
+        core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Pause, bytes(""));
+
+        // Withdraw with clearAdapter=true
+        EmergencyModule.EmergencyWithdrawParams memory params =
+            EmergencyModule.EmergencyWithdrawParams({clearAdapter: true});
+
+        vm.prank(emergencyManager);
+        core.triggerEmergency(vaultId, EmergencyModule.EmergencyAction.Withdraw, abi.encode(params));
+
+        assertEq(mockVault.adapter(), address(0), "adapter should be cleared");
+    }
+
+    function test_Contract12_Case09_riskModule_invalidThresholdReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.liquidationThresholdBps = 10_001;
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case10_riskModule_ltvAboveThresholdReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.ltvBps = 8001;
+        cfg.liquidationThresholdBps = 8000;
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case11_riskModule_invalidPenaltyReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.liquidationPenaltyBps = 5001;
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case12_riskModule_invalidCapsReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.depositCapBps = 10_001;
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case13_riskModule_borrowCapAboveDepositCapReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.depositCapBps = 6000;
+        cfg.borrowCapBps = 7000;
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case14_riskModule_idMismatchReverts() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.id = keccak256("different-risk-id");
+
+        vm.prank(riskManager);
+        vm.expectRevert();
+        core.configureRisk(riskId, cfg);
+    }
+
+    function test_Contract12_Case15_riskModule_boundaryValuesPass() public {
+        RiskModule.RiskConfigInput memory cfg = _validRiskConfig();
+        cfg.ltvBps = 10_000;
+        cfg.liquidationThresholdBps = 10_000;
+        cfg.liquidationPenaltyBps = 5_000;
+        cfg.depositCapBps = 10_000;
+        cfg.borrowCapBps = 10_000;
+        cfg.maxBorrow = cfg.maxDeposit;
+
+        vm.prank(riskManager);
+        core.configureRisk(riskId, cfg);
+
+        GiveTypes.RiskConfig memory stored = core.getRiskConfig(riskId);
+        assertEq(stored.ltvBps, 10_000);
+        assertEq(stored.liquidationThresholdBps, 10_000);
+        assertEq(stored.liquidationPenaltyBps, 5_000);
+        assertEq(stored.depositCapBps, 10_000);
+        assertEq(stored.borrowCapBps, 10_000);
+        assertEq(stored.maxBorrow, stored.maxDeposit);
     }
 }
