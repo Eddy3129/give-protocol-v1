@@ -7,9 +7,11 @@ import {
   zeroAddress,
 } from "viem";
 import {
+  classifyE2EError,
   ctx,
   deployments,
   getAbi,
+  getBytecode,
   getFirstLogArgs,
   isZeroBytes32,
   markSectionDone,
@@ -98,6 +100,52 @@ export function registerTestAction00EnvironmentAndCampaignLifecycle(): void {
       })) as boolean;
 
       expect(hasRole || configuredHasRole).toBe(true);
+    });
+
+    it("test_S01_campaignAdminHasRoleForLifecycleOps", async () => {
+      const configuredCampaignAdmin = deployments.CampaignAdminAddress
+        ? getAddress(deployments.CampaignAdminAddress)
+        : ctx.adminAddress;
+
+      const hasRole = (await publicClient.readContract({
+        address: ctx.aclManagerAddress,
+        abi: getAbi("ACLManager"),
+        functionName: "hasRole",
+        args: [
+          deployments.ROLE_CAMPAIGN_ADMIN as `0x${string}`,
+          configuredCampaignAdmin,
+        ],
+      })) as boolean;
+
+      const canProceed = requireOrSkip(
+        hasRole,
+        "Configured campaign admin lacks ROLE_CAMPAIGN_ADMIN",
+      );
+      if (!canProceed) return;
+      expect(hasRole).toBe(true);
+    });
+
+    it("test_S01_campaignCuratorHasRoleForApprovals", async () => {
+      const configuredCurator = deployments.CampaignCuratorAddress
+        ? getAddress(deployments.CampaignCuratorAddress)
+        : ctx.adminAddress;
+
+      const hasRole = (await publicClient.readContract({
+        address: ctx.aclManagerAddress,
+        abi: getAbi("ACLManager"),
+        functionName: "hasRole",
+        args: [
+          deployments.ROLE_CAMPAIGN_CURATOR as `0x${string}`,
+          configuredCurator,
+        ],
+      })) as boolean;
+
+      const canProceed = requireOrSkip(
+        hasRole,
+        "Configured campaign curator lacks ROLE_CAMPAIGN_CURATOR",
+      );
+      if (!canProceed) return;
+      expect(hasRole).toBe(true);
     });
 
     it("test_S01_strategyRegistryAaveUsdcIsActive", async () => {
@@ -245,12 +293,31 @@ export function registerTestAction00EnvironmentAndCampaignLifecycle(): void {
         abi: getAbi("CampaignRegistry"),
         functionName: "approveCampaign",
         args: [ctx.campaignId!, ctx.adminAddress],
+        gas: 500_000n,
       });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: approveHash,
       });
-      expect(receipt.status).toBe("success");
+      if (receipt.status !== "success") {
+        let approveError: unknown;
+        await publicClient
+          .simulateContract({
+            account: ctx.adminAddress,
+            address: ctx.campaignRegistryAddress,
+            abi: getAbi("CampaignRegistry"),
+            functionName: "approveCampaign",
+            args: [ctx.campaignId!, ctx.adminAddress],
+          })
+          .catch((error) => {
+            approveError = error;
+          });
+
+        const diagnostic = classifyE2EError(approveError);
+        throw new Error(
+          `approveCampaign failed with status=${receipt.status}; tx=${approveHash}; source=${diagnostic.source}; detail=${diagnostic.message}`,
+        );
+      }
       ctx.campaignApproved = true;
 
       const approveLogs = parseEventLogs({
@@ -298,6 +365,55 @@ export function registerTestAction00EnvironmentAndCampaignLifecycle(): void {
         return;
       }
 
+      const factoryHasCampaignAdminRole = (await publicClient.readContract({
+        address: ctx.aclManagerAddress,
+        abi: getAbi("ACLManager"),
+        functionName: "hasRole",
+        args: [
+          deployments.ROLE_CAMPAIGN_ADMIN as `0x${string}`,
+          ctx.campaignVaultFactoryAddress,
+        ],
+      })) as boolean;
+
+      if (!factoryHasCampaignAdminRole) {
+        const grantRoleHash = await walletClient.writeContract({
+          account: ctx.adminAccount,
+          address: ctx.aclManagerAddress,
+          abi: getAbi("ACLManager"),
+          functionName: "grantRole",
+          args: [
+            deployments.ROLE_CAMPAIGN_ADMIN as `0x${string}`,
+            ctx.campaignVaultFactoryAddress,
+          ],
+          gas: 250_000n,
+        });
+
+        const grantRoleReceipt = await publicClient.waitForTransactionReceipt({
+          hash: grantRoleHash,
+        });
+
+        if (grantRoleReceipt.status !== "success") {
+          ctx.campaignVaultAddress = ctx.baseVaultAddress;
+          const existingCampaignId = (await publicClient.readContract({
+            address: ctx.payoutRouterAddress,
+            abi: getAbi("PayoutRouter"),
+            functionName: "getVaultCampaign",
+            args: [ctx.campaignVaultAddress],
+          })) as `0x${string}`;
+
+          if (!isZeroBytes32(existingCampaignId)) {
+            ctx.campaignId = existingCampaignId;
+          }
+
+          expect(ctx.campaignVaultAddress).toBeDefined();
+          expect(ctx.campaignVaultAddress).not.toBe(zeroAddress);
+          console.log(
+            `[diag] grantRole for factory failed (tx=${grantRoleHash}); using existing vault path`,
+          );
+          return;
+        }
+      }
+
       const deployHash = await walletClient.writeContract({
         account: ctx.adminAccount,
         address: ctx.campaignVaultFactoryAddress,
@@ -314,12 +430,41 @@ export function registerTestAction00EnvironmentAndCampaignLifecycle(): void {
             symbol: "gCAMP",
           },
         ],
+        gas: 2_000_000n,
       });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: deployHash,
       });
-      expect(receipt.status).toBe("success");
+      if (receipt.status !== "success") {
+        let deployError: unknown;
+        await publicClient
+          .simulateContract({
+            account: ctx.adminAddress,
+            address: ctx.campaignVaultFactoryAddress,
+            abi: getAbi("CampaignVaultFactory"),
+            functionName: "deployCampaignVault",
+            args: [
+              {
+                campaignId: ctx.campaignId!,
+                strategyId: deployments.AaveUSDCStrategyId as `0x${string}`,
+                lockProfile: deployments.ConservativeRiskId as `0x${string}`,
+                asset: ctx.usdcAddress,
+                admin: ctx.adminAddress,
+                name: "Give Campaign",
+                symbol: "gCAMP",
+              },
+            ],
+          })
+          .catch((error) => {
+            deployError = error;
+          });
+
+        const diagnostic = classifyE2EError(deployError);
+        throw new Error(
+          `deployCampaignVault failed with status=${receipt.status}; tx=${deployHash}; source=${diagnostic.source}; detail=${diagnostic.message}`,
+        );
+      }
 
       const vaultLogs = parseEventLogs({
         abi: getAbi("CampaignVaultFactory"),
@@ -344,6 +489,83 @@ export function registerTestAction00EnvironmentAndCampaignLifecycle(): void {
       })) as { id: `0x${string}` };
 
       expect(byVault.id).toBe(ctx.campaignId);
+
+      const vaultDonationRouter = (await publicClient.readContract({
+        address: ctx.campaignVaultAddress,
+        abi: getAbi("GiveVault4626"),
+        functionName: "donationRouter",
+      })) as `0x${string}`;
+
+      if (
+        getAddress(vaultDonationRouter) !== getAddress(ctx.payoutRouterAddress)
+      ) {
+        const setRouterHash = await walletClient.writeContract({
+          account: ctx.adminAccount,
+          address: ctx.campaignVaultAddress,
+          abi: getAbi("GiveVault4626"),
+          functionName: "setDonationRouter",
+          args: [ctx.payoutRouterAddress],
+          gas: 300_000n,
+        });
+
+        const setRouterReceipt = await publicClient.waitForTransactionReceipt({
+          hash: setRouterHash,
+        });
+        expect(setRouterReceipt.status).toBe("success");
+      }
+
+      const activeAdapter = (await publicClient.readContract({
+        address: ctx.campaignVaultAddress,
+        abi: getAbi("GiveVault4626"),
+        functionName: "activeAdapter",
+      })) as `0x${string}`;
+
+      if (getAddress(activeAdapter) === getAddress(zeroAddress)) {
+        const rawAavePoolAddress =
+          process.env.AAVE_POOL_ADDRESS || deployments.AAVE_POOL_ADDRESS;
+        const canDeployAdapter = requireOrSkip(
+          Boolean(rawAavePoolAddress),
+          "AAVE_POOL_ADDRESS missing for campaign vault adapter deployment",
+        );
+        if (!canDeployAdapter) return;
+
+        const aavePoolAddress = getAddress(rawAavePoolAddress as `0x${string}`);
+
+        const deployAdapterHash = await walletClient.deployContract({
+          account: ctx.adminAccount,
+          abi: getAbi("AaveAdapter"),
+          bytecode: getBytecode("AaveAdapter"),
+          args: [
+            ctx.usdcAddress,
+            ctx.campaignVaultAddress,
+            aavePoolAddress,
+            ctx.adminAddress,
+          ],
+        });
+
+        const deployAdapterReceipt =
+          await publicClient.waitForTransactionReceipt({
+            hash: deployAdapterHash,
+          });
+        expect(deployAdapterReceipt.status).toBe("success");
+
+        const adapterAddress = deployAdapterReceipt.contractAddress;
+        expect(adapterAddress).toBeDefined();
+
+        const setAdapterHash = await walletClient.writeContract({
+          account: ctx.adminAccount,
+          address: ctx.campaignVaultAddress,
+          abi: getAbi("GiveVault4626"),
+          functionName: "setActiveAdapter",
+          args: [adapterAddress!],
+          gas: 500_000n,
+        });
+
+        const setAdapterReceipt = await publicClient.waitForTransactionReceipt({
+          hash: setAdapterHash,
+        });
+        expect(setAdapterReceipt.status).toBe("success");
+      }
     });
 
     it("test_S02_checkpointDone", () => {

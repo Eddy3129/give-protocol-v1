@@ -9,7 +9,7 @@
         coverage coverage-summary coverage-full \
         deploy-local deploy-rpc deploy-verify \
         smoke-local smoke-rpc smoke-fork smoke-arbitrum smoke-optimism \
-		frontend-install frontend-e2e-local frontend-e2e-rpc frontend-e2e-rpc-strict \
+		frontend-install frontend-e2e-local frontend-e2e-rpc frontend-e2e vitest \
         ci check
 
 BOLD  := \033[1m
@@ -18,6 +18,7 @@ CYAN  := \033[36m
 
 FUZZ_SEED    ?= 0x1337
 BASE_RPC_URL ?= https://base-rpc.publicnode.com
+AAVE_POOL_ADDRESS ?= 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5
 
 # ─── Help ─────────────────────────────────────────────────────────────────────
 
@@ -154,18 +155,29 @@ smoke-optimism: ## Viem smoke — Optimism RPC connectivity
 
 # ─── Frontend — E2E Tests ─────────────────────────────────────────────────────
 
-frontend-install: ## Install frontend pnpm dependencies
+frontend-install:
 	cd frontend && pnpm install
 
-frontend-e2e-local: ## Deploy then run Vitest E2E suite on Anvil
+frontend-e2e-local:
 	$(MAKE) deploy-local
 	cd frontend && pnpm test:e2e
 
-frontend-e2e-rpc: ## Vitest E2E suite against configured RPC
-	cd frontend && RPC_URL=$${RPC_URL:-$(BASE_RPC_URL)} pnpm test:e2e
+frontend-e2e-rpc:
+	cd frontend && \
+	  $(if $(RPC_URL),RPC_URL=$(RPC_URL),) \
+	  $(if $(DEPLOYMENT_NETWORK),DEPLOYMENT_NETWORK=$(DEPLOYMENT_NETWORK),) \
+	  pnpm test:e2e
 
-frontend-e2e-rpc-strict: ## Vitest E2E suite in strict release mode
-	cd frontend && RPC_URL=$${RPC_URL:-$(BASE_RPC_URL)} FRONTEND_E2E_STRICT=true pnpm test:e2e
+frontend-e2e:
+	cd frontend && \
+	  $(if $(RPC_URL),RPC_URL=$(RPC_URL),) \
+	  $(if $(DEPLOYMENT_NETWORK),DEPLOYMENT_NETWORK=$(DEPLOYMENT_NETWORK),) \
+	  $(if $(AAVE_POOL_ADDRESS),AAVE_POOL_ADDRESS=$(AAVE_POOL_ADDRESS),) \
+	  FRONTEND_E2E_STRICT=true \
+	  pnpm test:e2e
+
+vitest: ## Frontend E2E strict suite (simple alias)
+	$(MAKE) frontend-e2e
 
 # ─── Composite ────────────────────────────────────────────────────────────────
 

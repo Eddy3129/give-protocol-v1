@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   deployments,
   getAbi,
+  getBytecode,
   publicClient,
   signerAddress,
   testClient,
@@ -25,21 +26,54 @@ export const SECTION_KEYS = [
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
-export const STRICT_MODE =
-  String(process.env.FRONTEND_E2E_STRICT || "false").toLowerCase() === "true";
 
 const adminAccount = walletClient.account;
 if (!adminAccount) {
   throw new Error(
-    "walletClient.account is undefined. Configure PRIVATE_KEY, CAST_ACCOUNT, or ACCOUNT_ADDRESS.",
+    "walletClient.account is undefined. Configure PRIVATE_KEY in environment.",
   );
 }
-const userPrivateKey =
-  process.env.USER_PRIVATE_KEY ||
-  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const outsiderPrivateKey =
-  process.env.OUTSIDER_PRIVATE_KEY ||
-  "0x5de4111afa1a4b94908f83103a68d8675f2d82fce2f114cc2b03a95ad7faec9a";
+
+function requirePrivateKeyFromEnv(
+  key: string,
+  fallbackKey?: string,
+  strictRequired = false,
+): `0x${string}` {
+  const primary = process.env[key];
+  const fallback = fallbackKey ? process.env[fallbackKey] : undefined;
+  const raw = primary || fallback;
+  if (!raw) {
+    throw new Error(
+      `Missing ${key}${fallbackKey ? ` (or ${fallbackKey})` : ""}. Configure it in environment for frontend E2E tests.`,
+    );
+  }
+
+  if (strictRequired && !primary) {
+    throw new Error(
+      `Strict E2E requires explicit ${key}; fallback keys are not allowed in strict mode.`,
+    );
+  }
+
+  return raw.startsWith("0x")
+    ? (raw as `0x${string}`)
+    : (`0x${raw}` as `0x${string}`);
+}
+
+const userPrivateKey = requirePrivateKeyFromEnv(
+  "USER_PRIVATE_KEY",
+  undefined,
+  true,
+);
+const outsiderPrivateKey = requirePrivateKeyFromEnv(
+  "OUTSIDER_PRIVATE_KEY",
+  "USER_PRIVATE_KEY",
+  true,
+);
+const ngoPrivateKey = requirePrivateKeyFromEnv(
+  "NGO_PRIVATE_KEY",
+  "PRIVATE_KEY",
+  true,
+);
 
 export type E2EContext = {
   adminAccount: typeof adminAccount;
@@ -66,6 +100,7 @@ export type E2EContext = {
   hasCampaignCuratorRole: boolean;
   campaignSubmitted: boolean;
   campaignApproved: boolean;
+  fundedDepositFlowReady: boolean;
 };
 
 export const ctx: E2EContext = {
@@ -77,13 +112,9 @@ export const ctx: E2EContext = {
       : (`0x${userPrivateKey}` as `0x${string}`),
   ),
   ngoAccount: privateKeyToAccount(
-    (
-      process.env.NGO_PRIVATE_KEY ||
-      "0x8b3a350cf5c34c9194ca3a545d7f92f492f184f6d89ed8d4fdbd95f8cfb5f4a8"
-    ).startsWith("0x")
-      ? ((process.env.NGO_PRIVATE_KEY ||
-          "0x8b3a350cf5c34c9194ca3a545d7f92f492f184f6d89ed8d4fdbd95f8cfb5f4a8") as `0x${string}`)
-      : (`0x${process.env.NGO_PRIVATE_KEY}` as `0x${string}`),
+    ngoPrivateKey.startsWith("0x")
+      ? (ngoPrivateKey as `0x${string}`)
+      : (`0x${ngoPrivateKey}` as `0x${string}`),
   ),
   outsiderAccount: privateKeyToAccount(
     outsiderPrivateKey.startsWith("0x")
@@ -106,6 +137,7 @@ export const ctx: E2EContext = {
   hasCampaignCuratorRole: false,
   campaignSubmitted: false,
   campaignApproved: false,
+  fundedDepositFlowReady: false,
 };
 
 export async function initContext(): Promise<void> {
@@ -165,13 +197,7 @@ export function markSectionDone(section: SectionKey, label: string): void {
 
 export function requireOrSkip(condition: boolean, message: string): boolean {
   if (condition) return true;
-
-  if (STRICT_MODE) {
-    throw new Error(`[strict] ${message}`);
-  }
-
-  console.log(`[skip] ${message}`);
-  return false;
+  throw new Error(`[strict] ${message}`);
 }
 
 export function isZeroBytes32(value?: `0x${string}`): boolean {
@@ -180,6 +206,39 @@ export function isZeroBytes32(value?: `0x${string}`): boolean {
 
 export function getFirstLogArgs<T>(logs: unknown[]): T {
   return (logs[0] as { args: T }).args;
+}
+
+export function classifyE2EError(error: unknown): {
+  source: "rpc" | "contract-revert" | "viem" | "unknown";
+  message: string;
+} {
+  const text = String(error ?? "");
+  const lowered = text.toLowerCase();
+
+  if (
+    lowered.includes("rpc request failed") ||
+    lowered.includes("unlocked account") ||
+    lowered.includes("lack of funds") ||
+    lowered.includes("eth_sendtransaction") ||
+    lowered.includes("eth_sendrawtransaction")
+  ) {
+    return { source: "rpc", message: text };
+  }
+
+  if (
+    lowered.includes("revert") ||
+    lowered.includes("execution reverted") ||
+    lowered.includes("contractfunctionrevertederror") ||
+    lowered.includes("returned no data")
+  ) {
+    return { source: "contract-revert", message: text };
+  }
+
+  if (lowered.includes("viem@") || lowered.includes("contractfunction")) {
+    return { source: "viem", message: text };
+  }
+
+  return { source: "unknown", message: text };
 }
 
 export async function ensureUserHasUsdc(minAmount: bigint): Promise<boolean> {
@@ -220,4 +279,38 @@ export async function ensureUserHasUsdc(minAmount: bigint): Promise<boolean> {
   return true;
 }
 
-export { deployments, getAbi, publicClient, testClient, walletClient };
+export async function ensureAccountHasEth(
+  target: `0x${string}`,
+  minAmount: bigint,
+): Promise<boolean> {
+  const current = await publicClient.getBalance({ address: target });
+  if (current >= minAmount) return true;
+
+  const adminBal = await publicClient.getBalance({ address: ctx.adminAddress });
+  const topUp = minAmount - current;
+  if (adminBal <= topUp) {
+    console.log(
+      `[funding] Skipping ETH top-up: target=${target}, current=${formatUnits(current, 18)} ETH, admin=${formatUnits(adminBal, 18)} ETH`,
+    );
+    return false;
+  }
+
+  const txHash = await walletClient.sendTransaction({
+    account: ctx.adminAccount,
+    to: target,
+    value: topUp,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+  const updated = await publicClient.getBalance({ address: target });
+  return updated >= minAmount;
+}
+
+export {
+  deployments,
+  getAbi,
+  getBytecode,
+  publicClient,
+  testClient,
+  walletClient,
+};

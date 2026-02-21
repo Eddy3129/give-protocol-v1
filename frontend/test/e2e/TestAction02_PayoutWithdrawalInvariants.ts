@@ -103,6 +103,19 @@ export function registerTestAction02PayoutWithdrawalInvariants(): void {
   });
 
   describe("Section 7 — Donor Withdrawal", () => {
+    it("test_S07_withdrawalRequiresFundedDepositSetup", () => {
+      if (!ctx.fundedDepositFlowReady) {
+        const canProceed = requireOrSkip(
+          false,
+          "Withdrawal principal checks require funded deposit setup",
+        );
+        if (!canProceed) return;
+        return;
+      }
+
+      expect(ctx.fundedDepositFlowReady).toBe(true);
+    });
+
     it("test_S07_convertToAssetsMatchesExpectedPrincipal", async () => {
       if (ctx.mintedShares === 0n) {
         const canProceed = requireOrSkip(

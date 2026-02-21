@@ -10,7 +10,6 @@ import { localhost, mainnet } from "viem/chains";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
 
 // Load protocol .env from parent dir
 dotenv.config({ path: path.join(__dirname, "../.env") });
@@ -29,10 +28,7 @@ const anvil = {
 
 // 1. Get RPC from environment
 const rpcUrl =
-  process.env.TENDERLY_VIRTUAL_TESTNET_RPC ||
-  process.env.RPC_URL ||
-  process.env.BASE_RPC_URL ||
-  "http://127.0.0.1:8545";
+  process.env.RPC_URL || process.env.BASE_RPC_URL || "http://127.0.0.1:8545";
 
 const configuredChainId = Number(
   process.env.CHAIN_ID ||
@@ -49,9 +45,8 @@ const chain = configuredChainId === 31337 ? anvil : base;
 // 2. Setup Viem Clients
 // Signer priority:
 // 1) PRIVATE_KEY
-// 2) CAST_ACCOUNT alias (resolved via `cast wallet address --account <alias>`)
-// 3) ACCOUNT_ADDRESS
-// 4) Local Anvil default private key fallback
+// 2) ACCOUNT_ADDRESS
+// 3) Local Anvil default private key fallback
 type WalletSigner = ReturnType<typeof privateKeyToAccount> | `0x${string}`;
 
 function resolveWalletSigner(): WalletSigner {
@@ -62,23 +57,6 @@ function resolveWalletSigner(): WalletSigner {
         ? (privateKey as `0x${string}`)
         : (`0x${privateKey}` as `0x${string}`),
     );
-  }
-
-  if (process.env.CAST_ACCOUNT) {
-    const accountAlias = process.env.CAST_ACCOUNT;
-    try {
-      const resolved = execSync(
-        `cast wallet address --account ${accountAlias}`,
-        {
-          encoding: "utf-8",
-        },
-      ).trim();
-      return getAddress(resolved as `0x${string}`);
-    } catch (error) {
-      throw new Error(
-        `Failed to resolve CAST_ACCOUNT='${accountAlias}'. Ensure cast is installed and account exists. ${String(error)}`,
-      );
-    }
   }
 
   if (process.env.ACCOUNT_ADDRESS) {
@@ -113,12 +91,25 @@ export const testClient = createTestClient({
 });
 
 // 3. Load Dynamic Deployments
-// e.g. "anvil-latest.json" or "base-mainnet-latest.json"
-const networkName = configuredChainId === 31337 ? "anvil" : "base-mainnet";
-const deploymentsPath = path.join(
-  __dirname,
-  `../deployments/${networkName}-latest.json`,
-);
+// Priority:
+// 1) DEPLOYMENTS_FILE (explicit path)
+// 2) DEPLOYMENT_NETWORK (e.g. anvil, base-mainnet)
+// 3) chain-id heuristic fallback
+const resolvedDeploymentsFile = process.env.DEPLOYMENTS_FILE;
+const resolvedDeploymentNetwork = process.env.DEPLOYMENT_NETWORK;
+if (!resolvedDeploymentsFile && !resolvedDeploymentNetwork) {
+  throw new Error(
+    "E2E requires explicit deployment artifact selection. Set DEPLOYMENT_NETWORK or DEPLOYMENTS_FILE.",
+  );
+}
+const networkName =
+  resolvedDeploymentNetwork ||
+  (configuredChainId === 31337 ? "anvil" : "base-mainnet");
+const deploymentsPath = resolvedDeploymentsFile
+  ? path.isAbsolute(resolvedDeploymentsFile)
+    ? resolvedDeploymentsFile
+    : path.join(__dirname, "..", resolvedDeploymentsFile)
+  : path.join(__dirname, `../deployments/${networkName}-latest.json`);
 
 if (!fs.existsSync(deploymentsPath)) {
   throw new Error(
@@ -130,8 +121,8 @@ export const deployments = JSON.parse(
   fs.readFileSync(deploymentsPath, "utf-8"),
 );
 
-// 4. Load common ABIs
-export function getAbi(contractName: string) {
+// 4. Load common artifacts
+function getArtifact(contractName: string) {
   const artifactPath = path.join(
     __dirname,
     `../out/${contractName}.sol/${contractName}.json`,
@@ -141,6 +132,24 @@ export function getAbi(contractName: string) {
       `ABI not found for ${contractName}. Did you run forge build?`,
     );
   }
-  const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf-8"));
+  return JSON.parse(fs.readFileSync(artifactPath, "utf-8"));
+}
+
+export function getAbi(contractName: string) {
+  const artifact = getArtifact(contractName);
   return artifact.abi;
+}
+
+export function getBytecode(contractName: string): `0x${string}` {
+  const artifact = getArtifact(contractName);
+  if (!artifact.bytecode?.object) {
+    throw new Error(
+      `Bytecode not found for ${contractName}. Did you run forge build?`,
+    );
+  }
+
+  const bytecode = artifact.bytecode.object as string;
+  return (
+    bytecode.startsWith("0x") ? bytecode : `0x${bytecode}`
+  ) as `0x${string}`;
 }
