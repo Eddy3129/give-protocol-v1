@@ -10,6 +10,7 @@
         deploy-local deploy-rpc deploy-verify \
         smoke-local smoke-rpc smoke-fork smoke-arbitrum smoke-optimism \
 		frontend-install frontend-e2e-local frontend-e2e-rpc frontend-e2e vitest \
+        slither slither-triage slither-install \
         ci check
 
 BOLD  := \033[1m
@@ -178,6 +179,25 @@ frontend-e2e:
 
 vitest: ## Frontend E2E strict suite (simple alias)
 	$(MAKE) frontend-e2e
+
+# ─── Static Analysis ──────────────────────────────────────────────────────────
+
+slither-install: ## Install slither via uv (pyproject.toml)
+	uv sync
+
+slither: ## Run Slither — full report to slither-report.json
+	uv run slither . \
+	  --compile-force-framework foundry \
+	  --filter-paths "lib/,node_modules/" \
+	  --exclude-dependencies \
+	  --json slither-report.json
+
+slither-triage: ## Run Slither — High + Medium only, no JSON
+	uv run slither . \
+	  --compile-force-framework foundry \
+	  --filter-paths "lib/,node_modules/" \
+	  --exclude-dependencies \
+	  --detect reentrancy-eth,reentrancy-no-eth,controlled-delegatecall,arbitrary-send-eth,suicidal,controlled-array-length,uninitialized-state,msg-value-loop,tautology,divide-before-multiply
 
 # ─── Composite ────────────────────────────────────────────────────────────────
 
