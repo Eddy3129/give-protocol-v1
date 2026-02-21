@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 import "../interfaces/IACLManager.sol";
 import "../storage/StorageLib.sol";
@@ -44,7 +44,7 @@ import "../types/GiveTypes.sol";
  *      - PROTOCOL_ADMIN can emergency set current NGO (bypassing timelock)
  *      - ROLE_UPGRADER can upgrade contract
  */
-contract NGORegistry is Initializable, UUPSUpgradeable, Pausable {
+contract NGORegistry is Initializable, UUPSUpgradeable, PausableUpgradeable {
     // ============================================
     // STATE VARIABLES
     // ============================================
@@ -191,6 +191,7 @@ contract NGORegistry is Initializable, UUPSUpgradeable, Pausable {
      */
     function initialize(address acl) external initializer {
         if (acl == address(0)) revert ZeroAddress();
+        __Pausable_init();
         aclManager = IACLManager(acl);
     }
 
