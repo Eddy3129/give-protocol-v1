@@ -196,12 +196,11 @@ Tests are formally organized by scope, intent, and test type:
 | Category        | Directory           | Files | Purpose                                                 | Example                              | Naming                       |
 | --------------- | ------------------- | ----- | ------------------------------------------------------- | ------------------------------------ | ---------------------------- |
 | **Base**        | `test/base/`        | 3     | Shared deployment fixtures, 3-phase provisioning        | Base01_DeployCore.t.sol              | `Base0{1,2,3}_Deploy*.t.sol` |
-| **Unit**        | `test/unit/`        | 21    | Single-contract functionality, property validation      | TestContract07_NGORegistry.t.sol     | `TestContract{NN}_*.t.sol`   |
+| **Unit**        | `test/unit/`        | 21    | Single-contract functionality, property validation      | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
 | **Integration** | `test/integration/` | 2     | Full workflow cycles, end-to-end scenarios              | TestAction01_CampaignLifecycle.t.sol | `TestAction{NN}_*.t.sol`     |
 | **Fork**        | `test/fork/`        | 10    | Live protocol interactions (Aave, Pendle, wstETH)       | ForkTest01_AaveAdapter               | `ForkTest{NN}_*.fork.t.sol`  |
 | **Fuzz**        | `test/fuzz/`        | 4     | Stateless/stateful property testing                     | FuzzTest03_PayoutRouter              | `FuzzTest{NN}_*.t.sol`       |
 | **Invariant**   | `test/invariant/`   | 3     | Multi-step protocol invariants with handlers            | InvariantTest02_PayoutRouter         | `InvariantTest{NN}_*.t.sol`  |
-| **Root**        | `test/`             | 9     | Legacy integration tests (being consolidated into unit) | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
 
 ### **Test File Header Convention**
 

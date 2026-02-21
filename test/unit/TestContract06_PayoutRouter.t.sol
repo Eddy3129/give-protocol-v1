@@ -3,9 +3,9 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
-import {PayoutRouter} from "../src/payout/PayoutRouter.sol";
-import {MockERC20} from "../src/mocks/MockERC20.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
+import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
+import {MockERC20} from "../../src/mocks/MockERC20.sol";
+import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
 /**
  * @title MockACL

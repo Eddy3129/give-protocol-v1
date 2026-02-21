@@ -5,14 +5,14 @@ import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {GiveVault4626} from "../src/vault/GiveVault4626.sol";
-import {CampaignVault4626} from "../src/vault/CampaignVault4626.sol";
-import {CampaignVaultFactory} from "../src/factory/CampaignVaultFactory.sol";
-import {ACLManager} from "../src/governance/ACLManager.sol";
-import {CampaignRegistry} from "../src/registry/CampaignRegistry.sol";
-import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
-import {PayoutRouter} from "../src/payout/PayoutRouter.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
+import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
+import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
+import {CampaignVaultFactory} from "../../src/factory/CampaignVaultFactory.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
+import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
 /**
  * @title TestContract04_VaultSystem

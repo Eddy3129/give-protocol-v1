@@ -3,9 +3,9 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
-import {ACLManager} from "../src/governance/ACLManager.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
 /**
  * @title   TestContract02_StrategyRegistry

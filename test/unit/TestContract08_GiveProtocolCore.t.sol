@@ -2,15 +2,15 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import {GiveProtocolCore} from "../src/core/GiveProtocolCore.sol";
-import {ACLManager} from "../src/governance/ACLManager.sol";
-import {VaultModule} from "../src/modules/VaultModule.sol";
-import {AdapterModule} from "../src/modules/AdapterModule.sol";
-import {DonationModule} from "../src/modules/DonationModule.sol";
-import {RiskModule} from "../src/modules/RiskModule.sol";
-import {EmergencyModule} from "../src/modules/EmergencyModule.sol";
-import {SyntheticModule} from "../src/modules/SyntheticModule.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
+import {GiveProtocolCore} from "../../src/core/GiveProtocolCore.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {VaultModule} from "../../src/modules/VaultModule.sol";
+import {AdapterModule} from "../../src/modules/AdapterModule.sol";
+import {DonationModule} from "../../src/modules/DonationModule.sol";
+import {RiskModule} from "../../src/modules/RiskModule.sol";
+import {EmergencyModule} from "../../src/modules/EmergencyModule.sol";
+import {SyntheticModule} from "../../src/modules/SyntheticModule.sol";
+import {GiveTypes} from "../../src/types/GiveTypes.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**

@@ -3,12 +3,12 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {StrategyManager} from "../src/manager/StrategyManager.sol";
-import {ACLManager} from "../src/governance/ACLManager.sol";
-import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
-import {CampaignRegistry} from "../src/registry/CampaignRegistry.sol";
-import {MockERC20} from "../src/mocks/MockERC20.sol";
-import {MockYieldAdapter} from "../src/mocks/MockYieldAdapter.sol";
+import {StrategyManager} from "../../src/manager/StrategyManager.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {MockERC20} from "../../src/mocks/MockERC20.sol";
+import {MockYieldAdapter} from "../../src/mocks/MockYieldAdapter.sol";
 
 /**
  * @title MockGiveVault

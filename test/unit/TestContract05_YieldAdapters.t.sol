@@ -3,14 +3,14 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
-import "../src/adapters/kinds/GrowthAdapter.sol";
-import "../src/adapters/kinds/CompoundingAdapter.sol";
-import "../src/adapters/kinds/PTAdapter.sol";
-import "../src/adapters/kinds/ClaimableYieldAdapter.sol";
-import "../src/adapters/kinds/ManualManageAdapter.sol";
-import "../src/mocks/MockYieldAdapter.sol";
-import "../src/mocks/MockERC20.sol";
-import "../src/utils/GiveErrors.sol";
+import "../../src/adapters/kinds/GrowthAdapter.sol";
+import "../../src/adapters/kinds/CompoundingAdapter.sol";
+import "../../src/adapters/kinds/PTAdapter.sol";
+import "../../src/adapters/kinds/ClaimableYieldAdapter.sol";
+import "../../src/adapters/kinds/ManualManageAdapter.sol";
+import "../../src/mocks/MockYieldAdapter.sol";
+import "../../src/mocks/MockERC20.sol";
+import "../../src/utils/GiveErrors.sol";
 
 /**
  * @title TestContract05_YieldAdapters
