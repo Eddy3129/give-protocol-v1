@@ -1,6 +1,6 @@
 # GIVE Protocol — Concise Status Summary
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 ## Project Snapshot
 
@@ -32,6 +32,13 @@ No-loss donation protocol built on ERC-4626 vaults.
 
 ## Update Log (Concise)
 
+## Current Completion Snapshot
+
+1. Strict frontend E2E is complete and passing (`56/56`) via `make vitest`.
+2. Deployment scripts are hardened (broadcaster guards, env validation, canonical factory role grants).
+3. Frontend E2E runtime is strict-only with explicit deployment artifact selection.
+4. `Makefile` command surface is simplified (`make vitest` public, `frontend-e2e` internal override target).
+
 ## Completed Work (Phases 0–5)
 
 The protocol has been fully stabilized, tested, and audited across multiple iterations:
@@ -41,7 +48,7 @@ The protocol has been fully stabilized, tested, and audited across multiple iter
    - Reentrancy, access control, and flash-loan protections verified.
    - PayoutRouter uses a scalable pull-based accumulator model for yield distribution.
 2. **Coverage Hardening**
-   - 428 total tests (Unit, Integration, Fork, Fuzz, Invariant) all passing. 
+   - 428 total tests (Unit, Integration, Fork, Fuzz, Invariant) all passing.
    - Strict coverage mandates met (>85% branches on critical contracts like Vault and Router).
    - `--ir-minimum` used consistently across coverage to bypass stack-too-deep in OZ initializable.
 3. **Adapter Integrations & Forks**
@@ -50,24 +57,53 @@ The protocol has been fully stabilized, tested, and audited across multiple iter
 4. **Viem Frontend Smoke**
    - Local, RPC, and Fork lifecycle tests passing via `viem-smoke.mjs`.
 
-*For historical details of Updates A through N, refer to previous git commits.*
+_For historical details of earlier updates, refer to previous git commits._
+
+### Update O — Strict E2E + Deployment Hardening (Complete)
+
+Recent production-readiness work closed the live strict Vitest blocker and hardened deployment assumptions:
+
+1. **Strict E2E Live Pass**
+
+- Frontend Vitest strict suite now passes end-to-end on BuildBear (`56/56`).
+- Campaign lifecycle, deposit, preference, harvest, payout, redeem, invariant, and revert sections all green.
+
+2. **Root Cause Closures**
+
+- Fixed role-chain assumptions (`grantRole` requires role-admin authority).
+- Fixed deployment artifact ambiguity (explicit `DEPLOYMENT_NETWORK`/`DEPLOYMENTS_FILE` pathing).
+- Fixed fresh campaign-vault operationalization (router wiring + vault-bound adapter activation).
+- Corrected access-control expectation for permissionless `harvest` behavior.
+
+3. **Deployment Script Hardening**
+
+- Added broadcaster preflight checks and `ALLOW_DEFAULT_BROADCAST` guardrails.
+- Added env validation for required addresses and fee bounds.
+- Added canonical role grants for `CampaignVaultFactory` (`ROLE_CAMPAIGN_ADMIN`, `ROLE_STRATEGY_ADMIN`).
+
+4. **Ops Ergonomics**
+
+- Frontend E2E is strict-only (non-strict path removed from runtime assertions).
+- `Makefile` now exposes `make vitest` as the primary public frontend E2E command.
+- Internal frontend target renamed to `frontend-e2e` and old `frontend-e2e-rpc-strict` removed.
+- `.env.example` expanded to include strict frontend and deployment requirements.
 
 ---
 
 ---
 
-## Phase 6 — Tenderly + Production Readiness (Pending)
+## Phase 6 — Tenderly + Production Readiness (In Progress)
 
 Phase 6 covers everything between "fork smoke passes" and "safe to deploy to mainnet".
 None of this is covered by any prior phase.
 
-### 6A — Tenderly Virtual TestNet scenarios (Replaced by 6G)
+### 6.1 — Tenderly Virtual TestNet scenarios (Replaced by 6.7)
 
-*Note: The manual forge script scenarios have been deprecated in favor of an automated Viem/Vitest operations suite (Phase 6G).*
+_Note: The manual forge script scenarios have been deprecated in favor of an automated Viem/Vitest operations suite (Phase 6.7)._
 
 Collect: trace links, gas evidence, event shapes — needed for release signoff.
 
-### 6B — Multi-RPC fallback validation
+### 6.2 — Multi-RPC fallback validation
 
 The smoke test currently skips fallback when only one RPC is provided.
 Needs a second endpoint (`BASE_RPC_URL_FALLBACK`) configured and validated:
@@ -75,7 +111,7 @@ Needs a second endpoint (`BASE_RPC_URL_FALLBACK`) configured and validated:
 - Primary RPC degraded → fallback kicks in transparently
 - Both RPCs down → surfaced error is user-friendly, not a raw viem transport error
 
-### 6C — Revert message UX audit
+### 6.3 — Revert message UX audit
 
 The smoke test confirms revert selectors (`0xb94abeec`) but not human-readable
 messages. The dapp needs to decode and display actionable errors.
@@ -91,13 +127,13 @@ Map every revert the user can trigger to a display string:
 | `GracePeriodExpired`       | "Emergency period ended, contact support" |
 | `ZeroAmount`               | "Amount must be greater than zero"        |
 
-### 6D — Mainnet deployment runbook (Done)
+### 6.4 — Mainnet deployment runbook (Done)
 
-The forge scripts have been successfully executed against Tenderly Virtual TestNet and BuildBear, including `--sender` parameter matching to ensure CREATE address consistency between simulation and broadcast. 
+The forge scripts have been successfully executed against Tenderly Virtual TestNet and BuildBear, including `--sender` parameter matching to ensure CREATE address consistency between simulation and broadcast.
 
 Post-deploy checklist: verify contracts on Basescan, confirm donationRouter wired, confirm authorizedCaller set.
 
-### 6E — Contract verification on Basescan
+### 6.5 — Contract verification on Basescan
 
 `VERIFY_CONTRACTS=true` path in `BaseDeployment.verifyContract()` exists but is
 untested. Validate that all proxies and implementations verify correctly:
@@ -107,33 +143,52 @@ VERIFY_CONTRACTS=true ETHERSCAN_API_KEY=... forge script script/Deploy01_Infrast
   --rpc-url $BASE_RPC_URL --broadcast --verify
 ```
 
-### 6F (Lower Priority) — GAP-6 adapter fork suites
+### 6.6 (Lower Priority) — GAP-6 adapter fork suites
 
 No dedicated fork suites yet for `GrowthAdapter`, `ClaimableYieldAdapter`,
 `ManualManageAdapter`. Not a blocker — no live Base deployment target for
 realistic fork behavior. Add when adapters have mainnet deployments to fork against.
 
-### 6G — Viem + Vitest Operations Suite ❗ BLOCKER
+### 6.7 — Viem + Vitest Operations Suite ✅ Delivered (Strict Runtime)
 
 Forge operations scripts (`.s.sol`) have been deprecated. All protocol operations (Campaign Creation, Vault Deployment, Deposits, Withdrawals, Yield Harvests) are moving to a cohesive TypeScript + Viem + Vitest test suite.
 
 This suite runs live against any configured RPC (Tenderly VTN, BuildBear, Anvil) simulating end-to-end Dapp interactions:
 
 1. **Admin & Setup Flows**
-   - [ ] Read dynamically deployed addresses from `deployments/<network>-latest.json`
-   - [ ] Confirm Strategy Registry has targeted strategy (e.g. AaveUSDCStrategy)
+
+- [x] Read dynamically deployed addresses from `deployments/<network>-latest.json`
+- [x] Confirm Strategy Registry has targeted strategy (e.g. AaveUSDCStrategy)
+
 2. **Campaign Lifecycle Flow**
-   - [ ] Admin: Submit new campaign via `CampaignRegistry.submitCampaign(params)`
-   - [ ] Admin: Approve the newly submitted campaign via `CampaignRegistry.approveCampaign(id)`
-   - [ ] Admin: Deploy a new Vault for the campaign via `CampaignVaultFactory.deployCampaignVault()`
+
+- [x] Admin: Submit new campaign via `CampaignRegistry.submitCampaign(params)`
+- [x] Admin: Approve the newly submitted campaign via `CampaignRegistry.approveCampaign(id)`
+- [x] Admin: Deploy a new Vault for the campaign via `CampaignVaultFactory.deployCampaignVault()`
+
 3. **User Action & Yield Flow**
-   - [ ] User: Approve USDC spend for the new Vault
-   - [ ] User: Deposit USDC into the Campaign Vault
-   - [ ] RPC: Fast-forward time (e.g. 30 days) to simulate yield accrual
-   - [ ] Vault: Call `harvest()` (or simulate bot executing it) to process accrued yield
+
+- [x] User: Approve USDC spend for the new Vault
+- [x] User: Deposit USDC into the Campaign Vault
+- [x] RPC: Fast-forward time (e.g. 30 days) to simulate yield accrual
+- [x] Vault: Call `harvest()` (or simulate bot executing it) to process accrued yield
+
 4. **Distribution & Withdrawal Flow**
-   - [ ] PayoutRouter: Verify NGO/Campaign share metrics increase properly
-   - [ ] User: Redeem Vault shares and confirm correct return of principal + zero slippage loss
+
+- [x] PayoutRouter: Verify NGO/Campaign share metrics increase properly
+- [x] User: Redeem Vault shares and confirm correct return of principal + zero slippage loss
+
+Validation command (strict):
+
+```bash
+make vitest
+```
+
+Optional explicit override command:
+
+```bash
+make frontend-e2e RPC_URL=... DEPLOYMENT_NETWORK=anvil
+```
 
 **Note:** This suite completely replaces the need for `.s.sol` scripts outside of initial deployment, ensuring maximum compatibility with frontend implementation code.
 
@@ -193,14 +248,14 @@ This suite runs live against any configured RPC (Tenderly VTN, BuildBear, Anvil)
 
 Tests are formally organized by scope, intent, and test type:
 
-| Category        | Directory           | Files | Purpose                                                 | Example                              | Naming                       |
-| --------------- | ------------------- | ----- | ------------------------------------------------------- | ------------------------------------ | ---------------------------- |
-| **Base**        | `test/base/`        | 3     | Shared deployment fixtures, 3-phase provisioning        | Base01_DeployCore.t.sol              | `Base0{1,2,3}_Deploy*.t.sol` |
-| **Unit**        | `test/unit/`        | 21    | Single-contract functionality, property validation      | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
-| **Integration** | `test/integration/` | 2     | Full workflow cycles, end-to-end scenarios              | TestAction01_CampaignLifecycle.t.sol | `TestAction{NN}_*.t.sol`     |
-| **Fork**        | `test/fork/`        | 10    | Live protocol interactions (Aave, Pendle, wstETH)       | ForkTest01_AaveAdapter               | `ForkTest{NN}_*.fork.t.sol`  |
-| **Fuzz**        | `test/fuzz/`        | 4     | Stateless/stateful property testing                     | FuzzTest03_PayoutRouter              | `FuzzTest{NN}_*.t.sol`       |
-| **Invariant**   | `test/invariant/`   | 3     | Multi-step protocol invariants with handlers            | InvariantTest02_PayoutRouter         | `InvariantTest{NN}_*.t.sol`  |
+| Category        | Directory           | Files | Purpose                                            | Example                              | Naming                       |
+| --------------- | ------------------- | ----- | -------------------------------------------------- | ------------------------------------ | ---------------------------- |
+| **Base**        | `test/base/`        | 3     | Shared deployment fixtures, 3-phase provisioning   | Base01_DeployCore.t.sol              | `Base0{1,2,3}_Deploy*.t.sol` |
+| **Unit**        | `test/unit/`        | 21    | Single-contract functionality, property validation | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
+| **Integration** | `test/integration/` | 2     | Full workflow cycles, end-to-end scenarios         | TestAction01_CampaignLifecycle.t.sol | `TestAction{NN}_*.t.sol`     |
+| **Fork**        | `test/fork/`        | 10    | Live protocol interactions (Aave, Pendle, wstETH)  | ForkTest01_AaveAdapter               | `ForkTest{NN}_*.fork.t.sol`  |
+| **Fuzz**        | `test/fuzz/`        | 4     | Stateless/stateful property testing                | FuzzTest03_PayoutRouter              | `FuzzTest{NN}_*.t.sol`       |
+| **Invariant**   | `test/invariant/`   | 3     | Multi-step protocol invariants with handlers       | InvariantTest02_PayoutRouter         | `InvariantTest{NN}_*.t.sol`  |
 
 ### **Test File Header Convention**
 
