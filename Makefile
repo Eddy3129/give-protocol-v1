@@ -9,7 +9,7 @@
         coverage coverage-summary coverage-full \
         deploy-local deploy-rpc deploy-verify \
         smoke-local smoke-rpc smoke-fork smoke-arbitrum smoke-optimism \
-        frontend-install frontend-e2e-local frontend-e2e-rpc \
+		frontend-install frontend-e2e-local frontend-e2e-rpc frontend-e2e-rpc-strict \
         ci check
 
 BOLD  := \033[1m
@@ -162,7 +162,10 @@ frontend-e2e-local: ## Deploy then run Vitest E2E suite on Anvil
 	cd frontend && pnpm test:e2e
 
 frontend-e2e-rpc: ## Vitest E2E suite against configured RPC
-	cd frontend && RPC_URL=$(BASE_RPC_URL) pnpm test:e2e
+	cd frontend && RPC_URL=$${RPC_URL:-$(BASE_RPC_URL)} pnpm test:e2e
+
+frontend-e2e-rpc-strict: ## Vitest E2E suite in strict release mode
+	cd frontend && RPC_URL=$${RPC_URL:-$(BASE_RPC_URL)} FRONTEND_E2E_STRICT=true pnpm test:e2e
 
 # ─── Composite ────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test:e2e": "vitest run"
+    "test:e2e": "vitest run",
+    "test:e2e:strict": "FRONTEND_E2E_STRICT=true vitest run"
   },
   "keywords": [],
   "author": "",

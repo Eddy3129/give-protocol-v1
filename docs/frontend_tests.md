@@ -10,10 +10,10 @@ BuildBear, or live Base mainnet fork.
 
 Two test vehicles serve different purposes:
 
-| File | Runner | Mode | Purpose |
-|------|--------|------|---------|
-| `frontend/test/e2e.test.ts` | Vitest | Write transactions | Full campaign lifecycle with typed assertions |
-| `frontend/scripts/viem-smoke.mjs` | Node.js | Local + read-only | Multi-chain connectivity and lifecycle smoke |
+| File                              | Runner  | Mode               | Purpose                                       |
+| --------------------------------- | ------- | ------------------ | --------------------------------------------- |
+| `frontend/test/e2e.test.ts`       | Vitest  | Write transactions | Full campaign lifecycle with typed assertions |
+| `frontend/scripts/viem-smoke.mjs` | Node.js | Local + read-only  | Multi-chain connectivity and lifecycle smoke  |
 
 ### Current State vs Target
 
@@ -25,13 +25,13 @@ Phase 6G checklist item from `CLAUDE.md`.
 
 ## Stack
 
-| Tool | Version | Role |
-|------|---------|------|
-| `viem` | ^2.46.2 | Ethereum client (reads, writes, event decoding) |
-| `vitest` | ^4.0.18 | Test runner with globals |
-| `typescript` | ^5.9.3 | Full type safety |
-| `tsx` | ^4.21.0 | Direct TS execution for setup scripts |
-| `dotenv` | ^17.3.1 | Environment variable loading |
+| Tool         | Version | Role                                            |
+| ------------ | ------- | ----------------------------------------------- |
+| `viem`       | ^2.46.2 | Ethereum client (reads, writes, event decoding) |
+| `vitest`     | ^4.0.18 | Test runner with globals                        |
+| `typescript` | ^5.9.3  | Full type safety                                |
+| `tsx`        | ^4.21.0 | Direct TS execution for setup scripts           |
+| `dotenv`     | ^17.3.1 | Environment variable loading                    |
 
 ---
 
@@ -58,10 +58,10 @@ frontend/
 ```typescript
 export default defineConfig({
   test: {
-    environment: "node",       // No DOM — pure RPC calls
-    testTimeout: 60000,        // 60s per test (fork RPCs can be slow)
-    hookTimeout: 30000,        // 30s for beforeAll/afterAll
-    globals: true,             // describe/it/expect available without imports
+    environment: "node", // No DOM — pure RPC calls
+    testTimeout: 60000, // 60s per test (fork RPCs can be slow)
+    hookTimeout: 30000, // 30s for beforeAll/afterAll
+    globals: true, // describe/it/expect available without imports
   },
 });
 ```
@@ -71,19 +71,22 @@ export default defineConfig({
 Initializes all Viem clients and resolves deployment artifacts before any test runs.
 
 **RPC resolution** (priority order):
+
 1. `TENDERLY_VIRTUAL_TESTNET_RPC`
 2. `RPC_URL`
 3. `BASE_RPC_URL`
 4. Fallback: `http://127.0.0.1:8545`
 
 **Clients exported**:
+
 ```typescript
-publicClient   // createPublicClient  — reads, event queries, simulations
-walletClient   // createWalletClient  — signed transactions (deployer/operator)
-testClient     // createTestClient    — Anvil: increaseTime, mine, impersonation
+publicClient; // createPublicClient  — reads, event queries, simulations
+walletClient; // createWalletClient  — signed transactions (deployer/operator)
+testClient; // createTestClient    — Anvil: increaseTime, mine, impersonation
 ```
 
 **Deployment addresses** — loaded from JSON written by deployment scripts:
+
 - Local: `deployments/anvil-latest.json`
 - Fork/mainnet: `deployments/base-mainnet-latest.json`
 
@@ -91,6 +94,7 @@ Throws `Error("Deployment file not found")` if the JSON is missing — prevents 
 against undeployed contracts.
 
 **ABI loading**:
+
 ```typescript
 getAbi(contractName: string): Abi
 // Reads from: out/<contractName>.sol/<contractName>.json (forge artifacts)
@@ -102,17 +106,17 @@ These are loaded dynamically from JSON, not hardcoded in tests. Documented here 
 
 ```jsonc
 {
-  "ACLManager":                   "0x40fEE7225bf2b982B5fe876989fE6c3100871399",
-  "GiveProtocolCore":             "0xb7561a9b7C8Ac7f4Ab6A534CBA45d0643909b1a1",
-  "StrategyRegistry":             "0xb906985e093483eCbf936e9150d566A809E33ad6",
-  "CampaignRegistry":             "0xF4072C54bA4be297B24B07782A4B3a1A328E91a8",
-  "NGORegistry":                  "0x5027Fb902Dc004e252147baDB224dfA7Fd7A0Bb9",
-  "PayoutRouter":                 "0x6b001fE70a829A02591A4738195b90B4c7750540",
-  "CampaignVaultFactory":         "0x2d9ff15Fb346bf63381E9E2712BB85b320c02dfe",
-  "GiveVault4626Implementation":  "0x1704a4D9638E0875C1725f1DBB53dA1421F3A6d8",
-  "USDCVault":                    "0x68751f19C47F3C051149b3E6c159Da5ec3821dCF",
-  "USDCAddress":                  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  "AaveUSDCAdapter":              "0xc47ea58937226A3B41F7034B8D79E7E5138502dB"
+  "ACLManager": "0x40fEE7225bf2b982B5fe876989fE6c3100871399",
+  "GiveProtocolCore": "0xb7561a9b7C8Ac7f4Ab6A534CBA45d0643909b1a1",
+  "StrategyRegistry": "0xb906985e093483eCbf936e9150d566A809E33ad6",
+  "CampaignRegistry": "0xF4072C54bA4be297B24B07782A4B3a1A328E91a8",
+  "NGORegistry": "0x5027Fb902Dc004e252147baDB224dfA7Fd7A0Bb9",
+  "PayoutRouter": "0x6b001fE70a829A02591A4738195b90B4c7750540",
+  "CampaignVaultFactory": "0x2d9ff15Fb346bf63381E9E2712BB85b320c02dfe",
+  "GiveVault4626Implementation": "0x1704a4D9638E0875C1725f1DBB53dA1421F3A6d8",
+  "USDCVault": "0x68751f19C47F3C051149b3E6c159Da5ec3821dCF",
+  "USDCAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "AaveUSDCAdapter": "0xc47ea58937226A3B41F7034B8D79E7E5138502dB",
 }
 ```
 
@@ -214,18 +218,29 @@ describe("GIVE Protocol: End-to-End Campaign Lifecycle")
 describe("0. Environment Validation", () => {
   it("loads all deployment addresses from JSON artifact", async () => {
     const required = [
-      "ACLManager", "GiveProtocolCore", "StrategyRegistry",
-      "CampaignRegistry", "NGORegistry", "PayoutRouter",
-      "CampaignVaultFactory", "USDCAddress"
+      "ACLManager",
+      "GiveProtocolCore",
+      "StrategyRegistry",
+      "CampaignRegistry",
+      "NGORegistry",
+      "PayoutRouter",
+      "CampaignVaultFactory",
+      "USDCAddress",
     ];
     for (const key of required) {
       expect(deployments[key]).toMatch(/^0x[0-9a-fA-F]{40}$/);
-      expect(deployments[key]).not.toBe("0x0000000000000000000000000000000000000000");
+      expect(deployments[key]).not.toBe(
+        "0x0000000000000000000000000000000000000000",
+      );
     }
   });
 
   it("verifies all contract addresses have deployed code", async () => {
-    const contracts = [deployments.ACLManager, deployments.PayoutRouter, deployments.CampaignRegistry];
+    const contracts = [
+      deployments.ACLManager,
+      deployments.PayoutRouter,
+      deployments.CampaignRegistry,
+    ];
     for (const addr of contracts) {
       const code = await publicClient.getBytecode({ address: addr });
       expect(code).toBeDefined();
@@ -235,7 +250,9 @@ describe("0. Environment Validation", () => {
 
   it("verifies chain ID matches expected network", async () => {
     const chainId = await publicClient.getChainId();
-    const expected = process.env.EXPECTED_CHAIN_ID ? Number(process.env.EXPECTED_CHAIN_ID) : 31337;
+    const expected = process.env.EXPECTED_CHAIN_ID
+      ? Number(process.env.EXPECTED_CHAIN_ID)
+      : 31337;
     expect(chainId).toBe(expected);
   });
 });
@@ -250,6 +267,7 @@ describe("0. Environment Validation", () => {
 **Contract**: `ACLManager` — `hasRole(bytes32 role, address account) → bool`
 
 Key role IDs (keccak256 hashes from deployment JSON):
+
 - `ROLE_PROTOCOL_ADMIN`: `0x5b784347a5...`
 - `ROLE_UPGRADER`: `0x8a09bc4847...`
 - `ROLE_STRATEGY_ADMIN`: `0xb57297eceb...`
@@ -315,6 +333,7 @@ it("PayoutRouter: validAllocations returns [50, 75, 100]", async () => {
 **Function**: `submitCampaign(CampaignInput calldata input) payable`
 
 `CampaignInput` struct fields:
+
 ```typescript
 {
   proposer: Address,        // msg.sender typically
@@ -346,7 +365,9 @@ it("admin submits a new campaign via CampaignRegistry", async () => {
 it("emits CampaignSubmitted with correct campaignId", async () => {
   const logs = await publicClient.getLogs({
     address: deployments.CampaignRegistry,
-    event: parseAbiItem("event CampaignSubmitted(bytes32 indexed id, address indexed creator)"),
+    event: parseAbiItem(
+      "event CampaignSubmitted(bytes32 indexed id, address indexed creator)",
+    ),
     fromBlock: receipt.blockNumber,
     toBlock: receipt.blockNumber,
   });
@@ -527,13 +548,17 @@ it("getValidAllocations confirms 50 is a valid allocation", async () => {
 ```typescript
 it("advances time 30 days via anvil_increaseTime", async () => {
   const blockBefore = await publicClient.getBlockNumber();
-  const timestampBefore = (await publicClient.getBlock({ blockNumber: blockBefore })).timestamp;
+  const timestampBefore = (
+    await publicClient.getBlock({ blockNumber: blockBefore })
+  ).timestamp;
 
   await testClient.increaseTime({ seconds: 30 * 24 * 60 * 60 });
   await testClient.mine({ blocks: 1 });
 
   const blockAfter = await publicClient.getBlockNumber();
-  const timestampAfter = (await publicClient.getBlock({ blockNumber: blockAfter })).timestamp;
+  const timestampAfter = (
+    await publicClient.getBlock({ blockNumber: blockAfter })
+  ).timestamp;
   expect(timestampAfter - timestampBefore).toBeGreaterThanOrEqual(30n * 86400n);
 });
 
@@ -547,7 +572,11 @@ it("vault.harvest() succeeds and emits Harvest event", async () => {
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   expect(receipt.status).toBe("success");
 
-  const logs = parseEventLogs({ abi: vaultAbi, logs: receipt.logs, eventName: "Harvest" });
+  const logs = parseEventLogs({
+    abi: vaultAbi,
+    logs: receipt.logs,
+    eventName: "Harvest",
+  });
   expect(logs.length).toBe(1);
   harvestProfit = logs[0].args.profit;
   // Note: profit may be 0 on Anvil without live Aave — assert > 0 only on fork
@@ -558,7 +587,7 @@ it("PayoutRouter records yield: YieldRecorded event emitted", async () => {
   const logs = await publicClient.getLogs({
     address: deployments.PayoutRouter,
     event: parseAbiItem(
-      "event YieldRecorded(address indexed vault, address indexed asset, uint256 totalYield, uint256 deltaPerShare)"
+      "event YieldRecorded(address indexed vault, address indexed asset, uint256 totalYield, uint256 deltaPerShare)",
     ),
     fromBlock: harvestBlock,
     toBlock: harvestBlock,
@@ -673,7 +702,11 @@ it("user redeems all shares via GiveVault4626.redeem", async () => {
     args: [userAddress],
   });
 
-  const logs = parseEventLogs({ abi: vaultAbi, logs: receipt.logs, eventName: "Withdraw" });
+  const logs = parseEventLogs({
+    abi: vaultAbi,
+    logs: receipt.logs,
+    eventName: "Withdraw",
+  });
   expect(logs.length).toBe(1);
   expect(logs[0].args.shares).toBe(mintedShares);
 
@@ -701,35 +734,46 @@ These are protocol-correctness checks that should hold regardless of vault state
 ```typescript
 it("convertToShares(convertToAssets(1e18)) ≈ 1e18 within 2 wei", async () => {
   const assets = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "convertToAssets", args: [1_000_000_000_000_000_000n],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "convertToAssets",
+    args: [1_000_000_000_000_000_000n],
   });
   const sharesBack = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "convertToShares", args: [assets],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "convertToShares",
+    args: [assets],
   });
-  const delta = sharesBack > 1_000_000_000_000_000_000n
-    ? sharesBack - 1_000_000_000_000_000_000n
-    : 1_000_000_000_000_000_000n - sharesBack;
+  const delta =
+    sharesBack > 1_000_000_000_000_000_000n
+      ? sharesBack - 1_000_000_000_000_000_000n
+      : 1_000_000_000_000_000_000n - sharesBack;
   expect(delta).toBeLessThanOrEqual(2n);
 });
 
 it("maxDeposit(user) returns type(uint256).max or configured cap", async () => {
   const max = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "maxDeposit", args: [userAddress],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "maxDeposit",
+    args: [userAddress],
   });
   expect(max).toBeGreaterThan(0n);
 });
 
 it("maxRedeem(user) equals current share balance", async () => {
   const shares = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "balanceOf", args: [userAddress],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "balanceOf",
+    args: [userAddress],
   });
   const maxRedeem = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "maxRedeem", args: [userAddress],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "maxRedeem",
+    args: [userAddress],
   });
   expect(maxRedeem).toBe(shares);
 });
@@ -750,7 +794,7 @@ it("non-admin cannot call harvest()", async () => {
       abi: vaultAbi,
       functionName: "harvest",
       account: randomUser, // no ROLE_OPERATOR
-    })
+    }),
   ).rejects.toThrow(); // AccessControlUnauthorizedAccount
 });
 
@@ -762,7 +806,7 @@ it("non-curator cannot approve a campaign", async () => {
       functionName: "approveCampaign",
       args: [campaignId, randomUser],
       account: randomUser,
-    })
+    }),
   ).rejects.toThrow();
 });
 ```
@@ -773,16 +817,16 @@ it("non-curator cannot approve a campaign", async () => {
 
 Exact error selectors are captured and asserted. These drive the dApp's human-readable error messages.
 
-| Revert | Selector | Trigger Condition | User Message |
-|--------|----------|-------------------|--------------|
-| `ERC4626ExceededMaxRedeem` | `0xb94abeec` | Redeem more shares than owned | "Insufficient shares to redeem" |
-| `ZeroAmount` | TBD from GiveErrors.sol | deposit(0) or redeem(0) | "Amount must be greater than zero" |
-| `EnforcedPause` | `0xd93c0665` | Deposit/redeem while vault paused | "Vault is paused" |
-| `InvalidAllocation` | TBD | setVaultPreference with % not in [50,75,100] | "Invalid allocation percentage" |
-| `AccessControlUnauthorizedAccount` | `0xe2517d3f` | Missing role on restricted function | "Not authorized" |
-| `InsufficientCash` | TBD | Redeem exceeds vault cash buffer | "Vault is rebalancing, try again shortly" |
-| `ExcessiveLoss` | TBD | Withdrawal loss exceeds maxLossBps | "Withdrawal paused due to slippage" |
-| `GracePeriodExpired` | TBD | Emergency window closed | "Emergency period ended, contact support" |
+| Revert                             | Selector                | Trigger Condition                            | User Message                              |
+| ---------------------------------- | ----------------------- | -------------------------------------------- | ----------------------------------------- |
+| `ERC4626ExceededMaxRedeem`         | `0xb94abeec`            | Redeem more shares than owned                | "Insufficient shares to redeem"           |
+| `ZeroAmount`                       | TBD from GiveErrors.sol | deposit(0) or redeem(0)                      | "Amount must be greater than zero"        |
+| `EnforcedPause`                    | `0xd93c0665`            | Deposit/redeem while vault paused            | "Vault is paused"                         |
+| `InvalidAllocation`                | TBD                     | setVaultPreference with % not in [50,75,100] | "Invalid allocation percentage"           |
+| `AccessControlUnauthorizedAccount` | `0xe2517d3f`            | Missing role on restricted function          | "Not authorized"                          |
+| `InsufficientCash`                 | TBD                     | Redeem exceeds vault cash buffer             | "Vault is rebalancing, try again shortly" |
+| `ExcessiveLoss`                    | TBD                     | Withdrawal loss exceeds maxLossBps           | "Withdrawal paused due to slippage"       |
+| `GracePeriodExpired`               | TBD                     | Emergency window closed                      | "Emergency period ended, contact support" |
 
 ```typescript
 it("deposit(0) reverts with ZeroAmount", async () => {
@@ -793,14 +837,16 @@ it("deposit(0) reverts with ZeroAmount", async () => {
       functionName: "deposit",
       args: [0n, userAddress],
       account: userAddress,
-    })
+    }),
   ).rejects.toThrow(/ZeroAmount/);
 });
 
 it("redeem(shares+1) reverts with ERC4626ExceededMaxRedeem", async () => {
   const shares = await publicClient.readContract({
-    address: vaultAddress, abi: vaultAbi,
-    functionName: "balanceOf", args: [userAddress],
+    address: vaultAddress,
+    abi: vaultAbi,
+    functionName: "balanceOf",
+    args: [userAddress],
   });
 
   let revertData: Hex | undefined;
@@ -823,23 +869,26 @@ it("redeem(shares+1) reverts with ERC4626ExceededMaxRedeem", async () => {
 it("deposit while paused reverts with EnforcedPause", async () => {
   // Admin pauses
   await walletClient.writeContract({
-    address: vaultAddress, abi: vaultAbi,
+    address: vaultAddress,
+    abi: vaultAbi,
     functionName: "emergencyPause",
     account: operatorAddress,
   });
 
   await expect(
     publicClient.simulateContract({
-      address: vaultAddress, abi: vaultAbi,
+      address: vaultAddress,
+      abi: vaultAbi,
       functionName: "deposit",
       args: [DEPOSIT_AMOUNT, userAddress],
       account: userAddress,
-    })
+    }),
   ).rejects.toThrow(/EnforcedPause|0xd93c0665/);
 
   // Restore — don't leak paused state into subsequent tests
   await walletClient.writeContract({
-    address: vaultAddress, abi: vaultAbi,
+    address: vaultAddress,
+    abi: vaultAbi,
     functionName: "resumeFromEmergency",
     account: operatorAddress,
   });
@@ -855,21 +904,21 @@ Run directly with `node frontend/scripts/viem-smoke.mjs --mode=<local|rpc>`.
 
 ### Modes
 
-| Mode | Transactions | Deployment JSON | When to use |
-|------|-------------|-----------------|-------------|
-| `--mode=rpc` | None (reads only) | Not required | Verify live RPC is healthy |
-| `--mode=local` | Full lifecycle | Required | Verify deployment + full flow |
+| Mode           | Transactions      | Deployment JSON | When to use                   |
+| -------------- | ----------------- | --------------- | ----------------------------- |
+| `--mode=rpc`   | None (reads only) | Not required    | Verify live RPC is healthy    |
+| `--mode=local` | Full lifecycle    | Required        | Verify deployment + full flow |
 
 ### Chain Configuration
 
 Selected via `CHAIN_CONFIG` environment variable:
 
-| Chain | Config Path | RPC Variable |
-|-------|-------------|--------------|
-| Base (default) | `config/chains/base.json` | `BASE_RPC_URL` |
-| Local Anvil | `config/chains/local.json` | `http://127.0.0.1:8545` |
-| Arbitrum | `config/chains/arbitrum.json` | `ARBITRUM_RPC_URL` |
-| Optimism | `config/chains/optimism.json` | `OPTIMISM_RPC_URL` |
+| Chain          | Config Path                   | RPC Variable            |
+| -------------- | ----------------------------- | ----------------------- |
+| Base (default) | `config/chains/base.json`     | `BASE_RPC_URL`          |
+| Local Anvil    | `config/chains/local.json`    | `http://127.0.0.1:8545` |
+| Arbitrum       | `config/chains/arbitrum.json` | `ARBITRUM_RPC_URL`      |
+| Optimism       | `config/chains/optimism.json` | `OPTIMISM_RPC_URL`      |
 
 ---
 
@@ -877,21 +926,21 @@ Selected via `CHAIN_CONFIG` environment variable:
 
 Pure reads against a live RPC. Validates chain state and deployed external protocol contracts.
 
-| # | Check | Contract | Function | Assertion |
-|---|-------|----------|----------|-----------|
-| 1 | Chain ID | — | `eth_chainId` | Matches expected (8453 for Base) |
-| 2 | Block number | — | `eth_blockNumber` | > 0 |
-| 3 | USDC symbol | USDC | `symbol()` | `"USDC"` |
-| 4 | USDC decimals | USDC | `decimals()` | `6` |
-| 5 | USDC total supply | USDC | `totalSupply()` | > 0 |
-| 6 | Aave reserve data | Aave V3 Pool | `getReserveData(USDC)` | aToken address non-zero |
-| 7 | Aave liquidity rate | Aave V3 Pool | `getReserveData(USDC)` | `currentLiquidityRate` > 0 |
-| 8 | aUSDC supply | aUSDC token | `totalSupply()` | > 0 |
-| 9 | wstETH supply | wstETH | `totalSupply()` | > 0 |
-| 10 | wstETH oracle price | Aave Oracle | `getAssetPrice(wstETH)` | > 1000e8 (> $1000) |
-| 11 | Pendle router | Pendle Router | `eth_getCode` | Bytecode non-empty |
-| 12 | GIVE contracts exist | ACLManager, PayoutRouter | `eth_getCode` | Bytecode non-empty |
-| 13 | Multi-RPC fallback | — | Primary timeout → fallback | Fallback responds correctly |
+| #   | Check                | Contract                 | Function                   | Assertion                        |
+| --- | -------------------- | ------------------------ | -------------------------- | -------------------------------- |
+| 1   | Chain ID             | —                        | `eth_chainId`              | Matches expected (8453 for Base) |
+| 2   | Block number         | —                        | `eth_blockNumber`          | > 0                              |
+| 3   | USDC symbol          | USDC                     | `symbol()`                 | `"USDC"`                         |
+| 4   | USDC decimals        | USDC                     | `decimals()`               | `6`                              |
+| 5   | USDC total supply    | USDC                     | `totalSupply()`            | > 0                              |
+| 6   | Aave reserve data    | Aave V3 Pool             | `getReserveData(USDC)`     | aToken address non-zero          |
+| 7   | Aave liquidity rate  | Aave V3 Pool             | `getReserveData(USDC)`     | `currentLiquidityRate` > 0       |
+| 8   | aUSDC supply         | aUSDC token              | `totalSupply()`            | > 0                              |
+| 9   | wstETH supply        | wstETH                   | `totalSupply()`            | > 0                              |
+| 10  | wstETH oracle price  | Aave Oracle              | `getAssetPrice(wstETH)`    | > 1000e8 (> $1000)               |
+| 11  | Pendle router        | Pendle Router            | `eth_getCode`              | Bytecode non-empty               |
+| 12  | GIVE contracts exist | ACLManager, PayoutRouter | `eth_getCode`              | Bytecode non-empty               |
+| 13  | Multi-RPC fallback   | —                        | Primary timeout → fallback | Fallback responds correctly      |
 
 ---
 
@@ -913,28 +962,28 @@ Assert: all contract addresses have code at their addresses.
 
 Verify vault is correctly initialized before any writes:
 
-| Read | Function | Expected |
-|------|----------|----------|
-| `name()` | `string` | Non-empty |
-| `symbol()` | `string` | Non-empty |
-| `asset()` | `address` | USDC address |
-| `totalAssets()` | `uint256` | ≥ 0 |
-| `investPaused()` | `bool` | `false` |
-| `harvestPaused()` | `bool` | `false` |
-| `emergencyShutdown()` | `bool` | `false` |
-| `cashBufferBps()` | `uint256` | > 0 and ≤ 10000 |
-| `getCashBalance()` | `uint256` | ≥ 0 |
-| `donationRouter()` | `address` | PayoutRouter address |
+| Read                  | Function  | Expected             |
+| --------------------- | --------- | -------------------- |
+| `name()`              | `string`  | Non-empty            |
+| `symbol()`            | `string`  | Non-empty            |
+| `asset()`             | `address` | USDC address         |
+| `totalAssets()`       | `uint256` | ≥ 0                  |
+| `investPaused()`      | `bool`    | `false`              |
+| `harvestPaused()`     | `bool`    | `false`              |
+| `emergencyShutdown()` | `bool`    | `false`              |
+| `cashBufferBps()`     | `uint256` | > 0 and ≤ 10000      |
+| `getCashBalance()`    | `uint256` | ≥ 0                  |
+| `donationRouter()`    | `address` | PayoutRouter address |
 
 #### Phase 2 — PayoutRouter Reads
 
-| Read | Function | Expected |
-|------|----------|----------|
-| `feeBps()` | `uint256` | ≤ 2000 |
-| `feeRecipient()` | `address` | Non-zero |
-| `protocolTreasury()` | `address` | Non-zero |
-| `campaignRegistry()` | `address` | CampaignRegistry address |
-| `getValidAllocations()` | `uint8[3]` | `[50, 75, 100]` |
+| Read                    | Function   | Expected                 |
+| ----------------------- | ---------- | ------------------------ |
+| `feeBps()`              | `uint256`  | ≤ 2000                   |
+| `feeRecipient()`        | `address`  | Non-zero                 |
+| `protocolTreasury()`    | `address`  | Non-zero                 |
+| `campaignRegistry()`    | `address`  | CampaignRegistry address |
+| `getValidAllocations()` | `uint8[3]` | `[50, 75, 100]`          |
 
 #### Phase 3 — USDC Setup
 
@@ -951,6 +1000,7 @@ GiveVault4626.deposit(100_000_000n, userAddress)   → tx success
 ```
 
 Assertions:
+
 - `receipt.status === "success"` for both transactions
 - `Deposit` event emitted with `assets === 100_000_000n`
 - `GiveVault4626.balanceOf(user) > 0` — shares minted
@@ -964,6 +1014,7 @@ PayoutRouter.setVaultPreference(vault, ngoAddress, 50)
 ```
 
 Assertions:
+
 - `YieldPreferenceUpdated` event emitted
 - `getVaultPreference(user, vault)` returns `(campaignId, ngo, 50, true)`
 - Attempting `setVaultPreference(vault, ngo, 33)` reverts (33 not in validAllocations)
@@ -986,6 +1037,7 @@ GiveVault4626.harvest()
 ```
 
 Assertions:
+
 - Block timestamp advanced by ≥ 30 days
 - `Harvest(profit, loss, donated)` event emitted (profit may be 0 on plain Anvil)
 - On Aave fork: `profit > 0`
@@ -997,6 +1049,7 @@ GiveVault4626.redeem(mintedShares, userAddress, userAddress)
 ```
 
 Assertions:
+
 - `Withdraw` event emitted
 - `assets >= DEPOSIT_AMOUNT` — no principal loss
 - `GiveVault4626.balanceOf(user) === 0n` — fully redeemed
@@ -1006,11 +1059,11 @@ Assertions:
 
 Tests each documented revert without broadcasting:
 
-| Test | Call | Expected Error |
-|------|------|----------------|
-| Zero deposit | `deposit(0, user)` | `ZeroAmount` |
-| Over-redeem | `redeem(shares + 1n, user, user)` | `0xb94abeec` |
-| Deposit while paused | pause then `deposit(100e6, user)` | `0xd93c0665` |
+| Test                 | Call                              | Expected Error |
+| -------------------- | --------------------------------- | -------------- |
+| Zero deposit         | `deposit(0, user)`                | `ZeroAmount`   |
+| Over-redeem          | `redeem(shares + 1n, user, user)` | `0xb94abeec`   |
+| Deposit while paused | pause then `deposit(100e6, user)` | `0xd93c0665`   |
 
 ---
 
@@ -1025,6 +1078,9 @@ make frontend-e2e-local
 
 # E2E against Tenderly VTN or custom RPC
 make frontend-e2e-rpc
+
+# E2E strict release mode (fails on missing prereqs/permissions)
+make frontend-e2e-rpc-strict
 
 # Smoke: read-only RPC connectivity
 make smoke-rpc
@@ -1044,18 +1100,19 @@ make smoke-optimism
 
 ## Environment Variables
 
-| Variable | Required For | Description |
-|----------|-------------|-------------|
-| `RPC_URL` | E2E override | Generic RPC — highest precedence after Tenderly |
-| `BASE_RPC_URL` | Fork smoke, fork E2E | Base mainnet RPC or fork endpoint |
-| `BASE_RPC_URL_FALLBACK` | Phase 8 (multi-RPC) | Secondary RPC for failover testing |
-| `TENDERLY_VIRTUAL_TESTNET_RPC` | Tenderly VTN mode | VTN endpoint — highest precedence |
-| `ARBITRUM_RPC_URL` | Multi-chain smoke | Arbitrum endpoint |
-| `OPTIMISM_RPC_URL` | Multi-chain smoke | Optimism endpoint |
-| `PRIVATE_KEY` | Write operations | Deployer/operator wallet private key |
-| `USER_PRIVATE_KEY` | User E2E actions | Donor wallet private key |
-| `EXPECTED_CHAIN_ID` | Section 0 | Override expected chain ID (default: 31337) |
-| `CHAIN_CONFIG` | Smoke multi-chain | Path to chain config JSON |
+| Variable                       | Required For         | Description                                       |
+| ------------------------------ | -------------------- | ------------------------------------------------- |
+| `RPC_URL`                      | E2E override         | Generic RPC — highest precedence after Tenderly   |
+| `BASE_RPC_URL`                 | Fork smoke, fork E2E | Base mainnet RPC or fork endpoint                 |
+| `BASE_RPC_URL_FALLBACK`        | Phase 8 (multi-RPC)  | Secondary RPC for failover testing                |
+| `TENDERLY_VIRTUAL_TESTNET_RPC` | Tenderly VTN mode    | VTN endpoint — highest precedence                 |
+| `ARBITRUM_RPC_URL`             | Multi-chain smoke    | Arbitrum endpoint                                 |
+| `OPTIMISM_RPC_URL`             | Multi-chain smoke    | Optimism endpoint                                 |
+| `PRIVATE_KEY`                  | Write operations     | Deployer/operator wallet private key              |
+| `USER_PRIVATE_KEY`             | User E2E actions     | Donor wallet private key                          |
+| `FRONTEND_E2E_STRICT`          | Strict E2E mode      | `true` = fail fast on missing funds/roles/prereqs |
+| `EXPECTED_CHAIN_ID`            | Section 0            | Override expected chain ID (default: 31337)       |
+| `CHAIN_CONFIG`                 | Smoke multi-chain    | Path to chain config JSON                         |
 
 ---
 
@@ -1064,6 +1121,7 @@ make smoke-optimism
 Inline ABI fragments used in the suite — not the full compiled ABI:
 
 ### ERC20 (USDC)
+
 ```typescript
 const erc20Abi = parseAbi([
   "function name() view returns (string)",
@@ -1078,6 +1136,7 @@ const erc20Abi = parseAbi([
 ```
 
 ### GiveVault4626
+
 ```typescript
 const vaultAbi = parseAbi([
   "function name() view returns (string)",
@@ -1112,6 +1171,7 @@ const vaultAbi = parseAbi([
 ```
 
 ### PayoutRouter
+
 ```typescript
 const payoutRouterAbi = parseAbi([
   "function feeBps() view returns (uint256)",
@@ -1134,6 +1194,7 @@ const payoutRouterAbi = parseAbi([
 ```
 
 ### CampaignRegistry
+
 ```typescript
 const campaignRegistryAbi = parseAbi([
   "function getCampaign(bytes32 campaignId) view returns (tuple(bytes32 id, address proposer, address curator, address payoutRecipient, address vault, bytes32 strategyId, bytes32 metadataHash, uint256 targetStake, uint256 minStake, uint256 totalStaked, uint64 fundraisingStart, uint64 fundraisingEnd, uint8 status, bool payoutsHalted))",
@@ -1148,6 +1209,7 @@ const campaignRegistryAbi = parseAbi([
 ```
 
 ### ACLManager
+
 ```typescript
 const aclAbi = parseAbi([
   "function hasRole(bytes32 role, address account) view returns (bool)",
@@ -1195,7 +1257,7 @@ Expected artifact shape:
   // Strategy/vault/risk IDs
   "AaveUSDCStrategyId": "0x...",
   "ConservativeRiskId": "0x...",
-  "USDCVaultId": "0x..."
+  "USDCVaultId": "0x...",
 }
 ```
 
