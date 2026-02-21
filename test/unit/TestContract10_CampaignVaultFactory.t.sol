@@ -11,6 +11,7 @@ contract MockCampaignVaultImpl {
     bytes32 public campaignId;
     bytes32 public strategyId;
     bytes32 public lockProfile;
+    address public donationRouter;
 
     function initialize(address, string calldata name, string calldata, address, address, address, address) external {
         vaultId = keccak256(bytes(name));
@@ -20,6 +21,11 @@ contract MockCampaignVaultImpl {
         campaignId = campaignId_;
         strategyId = strategyId_;
         lockProfile = lockProfile_;
+
+        (bool success, bytes memory data) = msg.sender.staticcall(abi.encodeWithSignature("payoutRouter()"));
+        if (success) {
+            donationRouter = abi.decode(data, (address));
+        }
     }
 }
 
@@ -252,6 +258,8 @@ contract TestContract10_CampaignVaultFactory is Test {
         assertEq(payoutRouter.lastVault(), deployed);
         assertEq(payoutRouter.lastCampaignId(), campaignId);
         assertTrue(payoutRouter.lastAuthorized());
+
+        assertEq(MockCampaignVaultImpl(deployed).donationRouter(), address(payoutRouter));
     }
 
     function test_Contract10_Case03_duplicateDeployment_reverts() public {

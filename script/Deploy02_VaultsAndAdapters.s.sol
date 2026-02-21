@@ -73,6 +73,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
     bytes32 public conservativeRiskId;
     bytes32 public aaveUsdcAdapterId;
     bytes32 public pendleUsdcAdapterId;
+    bool public requireAaveAdapter;
 
     function setUp() public override {
         super.setUp();
@@ -94,6 +95,14 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         pendleRouter = getEnvAddressOr("PENDLE_ROUTER_ADDRESS", address(0));
         pendleMarket = getEnvAddressOr("PENDLE_MARKET_ADDRESS", address(0));
         pendlePt = getEnvAddressOr("PENDLE_PT_ADDRESS", address(0));
+        requireAaveAdapter = getEnvBoolOr("REQUIRE_AAVE_ADAPTER", true);
+
+        require(admin != address(0), "ADMIN_ADDRESS cannot be zero");
+        require(protocolAdmin != address(0), "PROTOCOL_ADMIN_ADDRESS cannot be zero");
+        require(usdcToken != address(0), "USDC_ADDRESS not set in .env");
+        if (requireAaveAdapter) {
+            require(aavePool != address(0), "AAVE_POOL_ADDRESS required when REQUIRE_AAVE_ADAPTER=true");
+        }
 
         // Generate deterministic IDs
         usdcVaultId = keccak256("vault.usdc.main");
@@ -109,9 +118,19 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
 
     function run() public {
         bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        bool allowDefaultBroadcast = getEnvBoolOr("ALLOW_DEFAULT_BROADCAST", false);
         if (hasKey) {
-            startBroadcastWith(vm.envUint("PRIVATE_KEY"));
+            uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+            address broadcaster = vm.addr(deployerPrivateKey);
+            require(broadcaster == admin, "PRIVATE_KEY signer must equal ADMIN_ADDRESS");
+            console.log("Broadcast signer:", broadcaster);
+            startBroadcastWith(deployerPrivateKey);
         } else {
+            require(
+                allowDefaultBroadcast,
+                "PRIVATE_KEY required. Set ALLOW_DEFAULT_BROADCAST=true only for controlled local runs"
+            );
+            console.log("WARNING: using default broadcast signer (no PRIVATE_KEY)");
             startBroadcast();
         }
         // ========================================
@@ -223,7 +242,6 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         // ========================================
         console.log("\n[5/9] Validating USDC Token...");
 
-        require(usdcToken != address(0), "USDC_ADDRESS not set in .env");
         console.log("Using USDC at:", usdcToken);
         saveDeployment("USDCAddress", usdcToken);
 

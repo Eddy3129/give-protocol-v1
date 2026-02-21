@@ -7,6 +7,10 @@ import "./GiveVault4626.sol";
 import "../storage/StorageLib.sol";
 import "../types/GiveTypes.sol";
 
+interface ICampaignVaultFactoryRouter {
+    function payoutRouter() external view returns (address);
+}
+
 /**
  * @title CampaignVault4626
  * @author GIVE Labs
@@ -110,6 +114,14 @@ contract CampaignVault4626 is GiveVault4626 {
     function initializeCampaign(bytes32 campaignId, bytes32 strategyId, bytes32 lockProfile) external {
         if (_campaignInitialized) revert CampaignAlreadyInitialized();
         if (msg.sender != _factory) revert NotFactory(msg.sender, _factory);
+
+        address router = ICampaignVaultFactoryRouter(_factory).payoutRouter();
+        if (router == address(0)) revert ZeroAddress();
+
+        GiveTypes.VaultConfig storage cfg = _vaultConfig();
+        address oldRouter = cfg.donationRouter;
+        cfg.donationRouter = router;
+        emit PayoutRouterUpdated(oldRouter, router);
 
         // Store campaign metadata in StorageLib
         bytes32 id = vaultId();

@@ -38,6 +38,7 @@ contract Deploy03_Initialize is BaseDeployment {
     StrategyManager public usdcStrategyManager;
     GiveVault4626 public usdcVault;
     PayoutRouter public payoutRouter;
+    address public campaignVaultFactory;
     AaveAdapter public aaveUsdcAdapter;
     PendleAdapter public pendleUsdcAdapter;
 
@@ -71,6 +72,7 @@ contract Deploy03_Initialize is BaseDeployment {
         usdcStrategyManager = StrategyManager(loadDeployment("USDCStrategyManager"));
         usdcVault = GiveVault4626(payable(loadDeployment("USDCVault")));
         payoutRouter = PayoutRouter(payable(loadDeployment("PayoutRouter")));
+        campaignVaultFactory = loadDeployment("CampaignVaultFactory");
 
         // Try to load Aave adapter (may not exist if Aave not available)
         aaveUsdcAdapter = AaveAdapter(loadDeploymentOrZero("AaveUSDCAdapter"));
@@ -83,6 +85,12 @@ contract Deploy03_Initialize is BaseDeployment {
         campaignAdmin = requireEnvAddress("CAMPAIGN_ADMIN_ADDRESS");
         campaignCreator = getEnvAddressOr("CAMPAIGN_CREATOR_ADDRESS", campaignAdmin);
         checkpointCouncil = getEnvAddressOr("CHECKPOINT_COUNCIL_ADDRESS", campaignAdmin);
+
+        require(admin != address(0), "ADMIN_ADDRESS cannot be zero");
+        require(protocolAdmin != address(0), "PROTOCOL_ADMIN_ADDRESS cannot be zero");
+        require(strategyAdmin != address(0), "STRATEGY_ADMIN_ADDRESS cannot be zero");
+        require(campaignAdmin != address(0), "CAMPAIGN_ADMIN_ADDRESS cannot be zero");
+        require(campaignVaultFactory != address(0), "CampaignVaultFactory deployment missing");
 
         // Define canonical role hashes
         ROLE_UPGRADER = keccak256("ROLE_UPGRADER");
@@ -102,13 +110,24 @@ contract Deploy03_Initialize is BaseDeployment {
         console.log("Protocol Admin:", protocolAdmin);
         console.log("Strategy Admin:", strategyAdmin);
         console.log("Campaign Admin:", campaignAdmin);
+        console.log("Campaign Vault Factory:", campaignVaultFactory);
     }
 
     function run() public {
         bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        bool allowDefaultBroadcast = getEnvBoolOr("ALLOW_DEFAULT_BROADCAST", false);
         if (hasKey) {
-            startBroadcastWith(vm.envUint("PRIVATE_KEY"));
+            uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+            address broadcaster = vm.addr(deployerPrivateKey);
+            require(broadcaster == admin, "PRIVATE_KEY signer must equal ADMIN_ADDRESS");
+            console.log("Broadcast signer:", broadcaster);
+            startBroadcastWith(deployerPrivateKey);
         } else {
+            require(
+                allowDefaultBroadcast,
+                "PRIVATE_KEY required. Set ALLOW_DEFAULT_BROADCAST=true only for controlled local runs"
+            );
+            console.log("WARNING: using default broadcast signer (no PRIVATE_KEY)");
             startBroadcast();
         }
         // ========================================
@@ -160,22 +179,46 @@ contract Deploy03_Initialize is BaseDeployment {
         console.log("\n[2/6] Granting Roles to Admins...");
 
         // Grant upgrader role
-        aclManager.grantRole(ROLE_UPGRADER, admin);
-        console.log("Granted ROLE_UPGRADER to admin");
+        if (!aclManager.hasRole(ROLE_UPGRADER, admin)) {
+            aclManager.grantRole(ROLE_UPGRADER, admin);
+            console.log("Granted ROLE_UPGRADER to admin");
+        }
 
         // Grant protocol admin role
-        aclManager.grantRole(ROLE_PROTOCOL_ADMIN, protocolAdmin);
-        console.log("Granted ROLE_PROTOCOL_ADMIN to protocolAdmin");
+        if (!aclManager.hasRole(ROLE_PROTOCOL_ADMIN, protocolAdmin)) {
+            aclManager.grantRole(ROLE_PROTOCOL_ADMIN, protocolAdmin);
+            console.log("Granted ROLE_PROTOCOL_ADMIN to protocolAdmin");
+        }
 
         // Grant strategy admin role
-        aclManager.grantRole(ROLE_STRATEGY_ADMIN, strategyAdmin);
-        console.log("Granted ROLE_STRATEGY_ADMIN to strategyAdmin");
+        if (!aclManager.hasRole(ROLE_STRATEGY_ADMIN, strategyAdmin)) {
+            aclManager.grantRole(ROLE_STRATEGY_ADMIN, strategyAdmin);
+            console.log("Granted ROLE_STRATEGY_ADMIN to strategyAdmin");
+        }
+
+        // Factory needs canonical roles for campaign vault lifecycle calls
+        if (!aclManager.hasRole(ROLE_CAMPAIGN_ADMIN, campaignVaultFactory)) {
+            aclManager.grantRole(ROLE_CAMPAIGN_ADMIN, campaignVaultFactory);
+            console.log("Granted ROLE_CAMPAIGN_ADMIN to CampaignVaultFactory");
+        }
+        if (!aclManager.hasRole(ROLE_STRATEGY_ADMIN, campaignVaultFactory)) {
+            aclManager.grantRole(ROLE_STRATEGY_ADMIN, campaignVaultFactory);
+            console.log("Granted ROLE_STRATEGY_ADMIN to CampaignVaultFactory");
+        }
 
         // Grant campaign roles
-        aclManager.grantRole(ROLE_CAMPAIGN_ADMIN, campaignAdmin);
-        aclManager.grantRole(ROLE_CAMPAIGN_CREATOR, campaignCreator);
-        aclManager.grantRole(ROLE_CAMPAIGN_CURATOR, campaignAdmin);
-        aclManager.grantRole(ROLE_CHECKPOINT_COUNCIL, checkpointCouncil);
+        if (!aclManager.hasRole(ROLE_CAMPAIGN_ADMIN, campaignAdmin)) {
+            aclManager.grantRole(ROLE_CAMPAIGN_ADMIN, campaignAdmin);
+        }
+        if (!aclManager.hasRole(ROLE_CAMPAIGN_CREATOR, campaignCreator)) {
+            aclManager.grantRole(ROLE_CAMPAIGN_CREATOR, campaignCreator);
+        }
+        if (!aclManager.hasRole(ROLE_CAMPAIGN_CURATOR, campaignAdmin)) {
+            aclManager.grantRole(ROLE_CAMPAIGN_CURATOR, campaignAdmin);
+        }
+        if (!aclManager.hasRole(ROLE_CHECKPOINT_COUNCIL, checkpointCouncil)) {
+            aclManager.grantRole(ROLE_CHECKPOINT_COUNCIL, checkpointCouncil);
+        }
 
         console.log("Granted ROLE_CAMPAIGN_ADMIN to campaignAdmin");
         console.log("Granted ROLE_CAMPAIGN_CREATOR to campaignCreator");

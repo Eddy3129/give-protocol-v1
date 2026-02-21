@@ -56,6 +56,9 @@ contract Deploy01_Infrastructure is BaseDeployment {
 
         // Load protocol configuration
         protocolFeeBps = getEnvUintOr("PROTOCOL_FEE_BPS", 100); // Default 1%
+        require(protocolFeeBps <= 1000, "PROTOCOL_FEE_BPS exceeds 10% max");
+        require(admin != address(0), "ADMIN_ADDRESS cannot be zero");
+        require(treasury != address(0), "TREASURY_ADDRESS cannot be zero");
 
         console.log("Admin address:", admin);
         console.log("Upgrader address:", upgrader);
@@ -65,10 +68,19 @@ contract Deploy01_Infrastructure is BaseDeployment {
 
     function run() public {
         bool hasKey = bytes(vm.envOr("PRIVATE_KEY", string(""))).length > 0;
+        bool allowDefaultBroadcast = getEnvBoolOr("ALLOW_DEFAULT_BROADCAST", false);
         if (hasKey) {
             uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+            address broadcaster = vm.addr(deployerPrivateKey);
+            require(broadcaster == admin, "PRIVATE_KEY signer must equal ADMIN_ADDRESS");
+            console.log("Broadcast signer:", broadcaster);
             startBroadcastWith(deployerPrivateKey);
         } else {
+            require(
+                allowDefaultBroadcast,
+                "PRIVATE_KEY required. Set ALLOW_DEFAULT_BROADCAST=true only for controlled local runs"
+            );
+            console.log("WARNING: using default broadcast signer (no PRIVATE_KEY)");
             startBroadcast(); // uses forge --account
         }
         // ========================================
