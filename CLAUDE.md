@@ -39,7 +39,7 @@ No-loss donation protocol built on ERC-4626 vaults.
 3. Frontend E2E runtime is strict-only with explicit deployment artifact selection.
 4. `Makefile` command surface is simplified (`make vitest` public, `frontend-e2e` internal override target).
 5. `PendleAdapter` extended with `tokenOut` immutable to support yield-bearing Pendle markets (PT-yoUSD, PT-yoETH) where the SY redemption token differs from the deposit asset.
-6. Fork suite trimmed to 8 high-value tests. `ForkTest11_PendleYoUSD` and `ForkTest12_PendleYoETH` added; `ForkTest03` (wstETH token-hold only), `ForkTest08` (PTAdapter no-op blocker), `ForkTest09` (mock-only gas test), and `ForkTest10` (env-gated duplicate) deleted.
+6. Fork suite now includes high-value upgrade validation via `ForkTest11_UpgradeCriticalPaths` (vault/router critical paths and adapter non-upgradeability), while avoiding unit-duplicate broad auth matrices.
 
 ## Completed Work (Phases 0–5)
 
@@ -253,14 +253,14 @@ make frontend-e2e RPC_URL=... DEPLOYMENT_NETWORK=anvil
 
 Tests are formally organized by scope, intent, and test type:
 
-| Category        | Directory           | Files | Purpose                                            | Example                              | Naming                       |
-| --------------- | ------------------- | ----- | -------------------------------------------------- | ------------------------------------ | ---------------------------- |
-| **Base**        | `test/base/`        | 3     | Shared deployment fixtures, 3-phase provisioning   | Base01_DeployCore.t.sol              | `Base0{1,2,3}_Deploy*.t.sol` |
-| **Unit**        | `test/unit/`        | 20    | Single-contract functionality, property validation | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
-| **Integration** | `test/integration/` | 2     | Full workflow cycles, end-to-end scenarios         | TestAction01_CampaignLifecycle.t.sol | `TestAction{NN}_*.t.sol`     |
-| **Fork**        | `test/fork/`        | 10    | Live protocol interactions (Aave, Pendle, wstETH)  | ForkTest01_AaveAdapter               | `ForkTest{NN}_*.fork.t.sol`  |
-| **Fuzz**        | `test/fuzz/`        | 4     | Stateless/stateful property testing                | FuzzTest03_PayoutRouter              | `FuzzTest{NN}_*.t.sol`       |
-| **Invariant**   | `test/invariant/`   | 3     | Multi-step protocol invariants with handlers       | InvariantTest02_PayoutRouter         | `InvariantTest{NN}_*.t.sol`  |
+| Category        | Directory           | Files | Purpose                                                                | Example                              | Naming                       |
+| --------------- | ------------------- | ----- | ---------------------------------------------------------------------- | ------------------------------------ | ---------------------------- |
+| **Base**        | `test/base/`        | 3     | Shared deployment fixtures, 3-phase provisioning                       | Base01_DeployCore.t.sol              | `Base0{1,2,3}_Deploy*.t.sol` |
+| **Unit**        | `test/unit/`        | 20    | Single-contract functionality, property validation                     | TestContract01_ACLManager.t.sol      | `TestContract{NN}_*.t.sol`   |
+| **Integration** | `test/integration/` | 2     | Full workflow cycles, end-to-end scenarios                             | TestAction01_CampaignLifecycle.t.sol | `TestAction{NN}_*.t.sol`     |
+| **Fork**        | `test/fork/`        | 11    | Live protocol interactions + critical-path upgrade checks on Base fork | ForkTest01_AaveAdapter               | `ForkTest{NN}_*.fork.t.sol`  |
+| **Fuzz**        | `test/fuzz/`        | 4     | Stateless/stateful property testing                                    | FuzzTest03_PayoutRouter              | `FuzzTest{NN}_*.t.sol`       |
+| **Invariant**   | `test/invariant/`   | 3     | Multi-step protocol invariants with handlers                           | InvariantTest02_PayoutRouter         | `InvariantTest{NN}_*.t.sol`  |
 
 ### **Test File Header Convention**
 
@@ -289,15 +289,15 @@ pragma solidity ^0.8.20;
 
 ### **Test Counts (Current - Update M)**
 
-| Type            | Count       | Example                                       | Scope                             |
-| --------------- | ----------- | --------------------------------------------- | --------------------------------- |
-| **Base env**    | 3           | Base01, Base02, Base03                        | Deployment fixtures only          |
-| **Unit**        | 407 cases   | 20 files from adapterKinds to UUPSUpgradeAuth | Single-contract, deterministic    |
-| **Integration** | ~400+ cases | Campaign lifecycle, multi-strategy ops        | Full workflows, real dependencies |
-| **Fork**        | 9 suites    | Aave (USDC/WETH/ETH), Pendle (yoUSD, yoETH, maturity/donor cycle), checkpoint voting, multi-vault | Live mainnet protocols |
-| **Fuzz**        | 4 suites    | Router, vault, adapters, registry             | Property-based bounded runs       |
-| **Invariant**   | 3 suites    | Router, vault, registry                       | Multi-step invariant handlers     |
-| **Total**       | 407         | Unit + integration only                       | Production coverage               |
+| Type            | Count       | Example                                                                                                                                       | Scope                             |
+| --------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **Base env**    | 3           | Base01, Base02, Base03                                                                                                                        | Deployment fixtures only          |
+| **Unit**        | 407 cases   | 20 files from adapterKinds to UUPSUpgradeAuth                                                                                                 | Single-contract, deterministic    |
+| **Integration** | ~400+ cases | Campaign lifecycle, multi-strategy ops                                                                                                        | Full workflows, real dependencies |
+| **Fork**        | 11 suites   | Aave (USDC/WETH/ETH), Pendle (yoUSD, yoETH, maturity/donor cycle), checkpoint voting, multi-vault, campaign lifecycle, upgrade critical paths | Live mainnet protocols            |
+| **Fuzz**        | 4 suites    | Router, vault, adapters, registry                                                                                                             | Property-based bounded runs       |
+| **Invariant**   | 3 suites    | Router, vault, registry                                                                                                                       | Multi-step invariant handlers     |
+| **Total**       | 407         | Unit + integration only                                                                                                                       | Production coverage               |
 
 ### **Test Documentation Standards**
 
@@ -364,7 +364,7 @@ forge test --match-path "test/fork/**" --fork-url $BASE_RPC_URL -v
 
 All fork/fuzz/invariant tests now follow numbered naming and matching contract titles:
 
-- Fork: `ForkTest01_*` … `ForkTest09_*` (9 suites, sequential)
+- Fork: `ForkTest01_*` … `ForkTest11_*` (11 suites, sequential)
 - Fuzz: `FuzzTest01_*` … `FuzzTest04_*`
 - Invariant: `InvariantTest01_*` … `InvariantTest03_*`
 
@@ -419,19 +419,19 @@ semgrep --config auto src/
 
 - `BASE_RPC_URL` should point to private RPC for reliability
 - `ForkBase.t.sol` includes public fallback for local convenience
-- Pendle fork smoke (`ForkTest10`) uses `PENDLE_BASE_MARKET`, `PENDLE_BASE_PT`, and optionally `PENDLE_BASE_TOKEN_OUT` (defaults to USDC for standard markets; set to yoUSD/yoETH for yield-bearing markets)
-- `ForkTest11_PendleYoUSD` and `ForkTest12_PendleYoETH` use hardcoded addresses from `ForkAddresses.sol` — no extra env vars required
+- Pendle fork smoke (`ForkTest07`/`ForkTest08`) uses hardcoded addresses from `ForkAddresses.sol` for yoUSD/yoETH market coverage — no extra env vars required
 - `Deploy02_VaultsAndAdapters.s.sol` reads `PENDLE_TOKEN_OUT_ADDRESS` for the 7th PendleAdapter constructor arg; defaults to `USDC_ADDRESS` when unset (correct for standard PT-aUSDC markets)
 
 ### PendleAdapter tokenOut — Market Types
 
-| Market type | Example | `asset_` (invest in) | `tokenOut_` (receive on divest) |
-|-------------|---------|---------------------|--------------------------------|
-| Standard | PT-aUSDC | USDC | USDC (same) |
-| Yield-bearing | PT-yoUSD | USDC | yoUSD (different) |
-| Yield-bearing | PT-yoETH | WETH | yoETH (different) |
+| Market type   | Example  | `asset_` (invest in) | `tokenOut_` (receive on divest) |
+| ------------- | -------- | -------------------- | ------------------------------- |
+| Standard      | PT-aUSDC | USDC                 | USDC (same)                     |
+| Yield-bearing | PT-yoUSD | USDC                 | yoUSD (different)               |
+| Yield-bearing | PT-yoETH | WETH                 | yoETH (different)               |
 
 The SY contract's `getTokensOut()` determines the valid `tokenOut_` values. Passing the wrong token causes `SYInvalidTokenOut` revert. Verify with:
+
 ```bash
 cast call <SY_ADDRESS> "getTokensOut()(address[])" --rpc-url $BASE_RPC_URL
 ```

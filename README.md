@@ -78,48 +78,48 @@ graph TD
 
 ### Core (Layer 1)
 
-| Contract | Type | Purpose |
-|----------|------|---------|
-| `ACLManager` | UUPS | Centralized role registry with two-step admin transfer |
-| `GiveProtocolCore` | UUPS | Thin orchestration layer; delegates to six module libraries |
-| `StrategyRegistry` | UUPS | Yield strategy lifecycle: Active → FadingOut → Deprecated |
+| Contract           | Type | Purpose                                                      |
+| ------------------ | ---- | ------------------------------------------------------------ |
+| `ACLManager`       | UUPS | Centralized role registry with two-step admin transfer       |
+| `GiveProtocolCore` | UUPS | Thin orchestration layer; delegates to six module libraries  |
+| `StrategyRegistry` | UUPS | Yield strategy lifecycle: Active → FadingOut → Deprecated    |
 | `CampaignRegistry` | UUPS | Campaign approval, checkpoint voting, supporter stake escrow |
-| `NGORegistry` | UUPS | Verified NGO registry with governance timelock |
-| `PayoutRouter` | UUPS | Pull-based yield accumulator with fee timelock management |
+| `NGORegistry`      | UUPS | Verified NGO registry with governance timelock               |
+| `PayoutRouter`     | UUPS | Pull-based yield accumulator with fee timelock management    |
 
 ### Vaults (Layer 2)
 
-| Contract | Type | Purpose |
-|----------|------|---------|
-| `GiveVault4626` | UUPS | Base ERC-4626 vault with yield harvesting and emergency controls |
-| `CampaignVault4626` | UUPS | Campaign-specific vault with fundraising limits |
-| `CampaignVaultFactory` | Normal | Deploys `CampaignVault4626` as UUPS proxies |
-| `StrategyManager` | Normal | LTV, penalty, and cap parameter management |
+| Contract               | Type   | Purpose                                                          |
+| ---------------------- | ------ | ---------------------------------------------------------------- |
+| `GiveVault4626`        | UUPS   | Base ERC-4626 vault with yield harvesting and emergency controls |
+| `CampaignVault4626`    | UUPS   | Campaign-specific vault with fundraising limits                  |
+| `CampaignVaultFactory` | Normal | Deploys `CampaignVault4626` as UUPS proxies                      |
+| `StrategyManager`      | Normal | LTV, penalty, and cap parameter management                       |
 
 ### Adapters (Layer 3)
 
-| Contract | Kind | Protocol |
-|----------|------|---------|
-| `AaveAdapter` | `BalanceGrowth` | Aave V3 — aTokens grow autonomously |
-| `CompoundingAdapter` | `CompoundingValue` | Generic compounding (sUSDe, cTokens) |
-| `GrowthAdapter` | `BalanceGrowth` | Generic balance-growth pattern |
-| `PendleAdapter` | `FixedMaturityToken` | Pendle PT integration (standard and yield-bearing markets) |
-| `PTAdapter` | `FixedMaturityToken` | Principal token base |
-| `ClaimableYieldAdapter` | `ClaimableYield` | Manual yield claiming (liquidity mining) |
-| `ManualManageAdapter` | `Manual` | Operator-controlled off-chain positions |
+| Contract                | Kind                 | Protocol                                                   |
+| ----------------------- | -------------------- | ---------------------------------------------------------- |
+| `AaveAdapter`           | `BalanceGrowth`      | Aave V3 — aTokens grow autonomously                        |
+| `CompoundingAdapter`    | `CompoundingValue`   | Generic compounding (sUSDe, cTokens)                       |
+| `GrowthAdapter`         | `BalanceGrowth`      | Generic balance-growth pattern                             |
+| `PendleAdapter`         | `FixedMaturityToken` | Pendle PT integration (standard and yield-bearing markets) |
+| `PTAdapter`             | `FixedMaturityToken` | Principal token base                                       |
+| `ClaimableYieldAdapter` | `ClaimableYield`     | Manual yield claiming (liquidity mining)                   |
+| `ManualManageAdapter`   | `Manual`             | Operator-controlled off-chain positions                    |
 
 ### Module Libraries
 
 Six stateless library modules delegate from `GiveProtocolCore`. All state is written through `StorageLib` into diamond storage.
 
-| Module | Responsibility |
-|--------|---------------|
-| `VaultModule` | Cash buffer, slippage, max loss configuration |
-| `AdapterModule` | Adapter registration and validation |
-| `DonationModule` | Donation routing and beneficiary management |
-| `RiskModule` | LTV, liquidation thresholds, caps, risk profiles |
-| `EmergencyModule` | Emergency pause, grace period, user withdrawal |
-| `SyntheticModule` | Synthetic position management |
+| Module            | Responsibility                                   |
+| ----------------- | ------------------------------------------------ |
+| `VaultModule`     | Cash buffer, slippage, max loss configuration    |
+| `AdapterModule`   | Adapter registration and validation              |
+| `DonationModule`  | Donation routing and beneficiary management      |
+| `RiskModule`      | LTV, liquidation thresholds, caps, risk profiles |
+| `EmergencyModule` | Emergency pause, grace period, user withdrawal   |
+| `SyntheticModule` | Synthetic position management                    |
 
 ---
 
@@ -228,13 +228,13 @@ Supporters vote proportional to their staked share. Required quorum is configura
 
 ## Adapter Kinds
 
-| Kind | How Yield Works | Example Protocols |
-|------|-----------------|-------------------|
-| `CompoundingValue` | Balance constant, exchange rate rises | wstETH, sUSDe, Compound cTokens |
-| `BalanceGrowth` | Token balance grows over time | Aave aTokens |
-| `FixedMaturityToken` | PT tokens mature at face value | Pendle PT |
-| `ClaimableYield` | Yield queued externally, claimed manually | Liquidity mining rewards |
-| `Manual` | Off-chain management, on-chain attestation | Structured products |
+| Kind                 | How Yield Works                            | Example Protocols               |
+| -------------------- | ------------------------------------------ | ------------------------------- |
+| `CompoundingValue`   | Balance constant, exchange rate rises      | wstETH, sUSDe, Compound cTokens |
+| `BalanceGrowth`      | Token balance grows over time              | Aave aTokens                    |
+| `FixedMaturityToken` | PT tokens mature at face value             | Pendle PT                       |
+| `ClaimableYield`     | Yield queued externally, claimed manually  | Liquidity mining rewards        |
+| `Manual`             | Off-chain management, on-chain attestation | Structured products             |
 
 ---
 
@@ -360,14 +360,14 @@ deployments/
 
 ### Test Suite Structure
 
-| Category | Directory | Files | Purpose | Naming |
-|----------|-----------|-------|---------|--------|
-| **Base** | `test/base/` | 3 | Deployment fixtures, 3-phase provisioning | `Base0{1,2,3}_Deploy*.t.sol` |
-| **Unit** | `test/unit/` | 21 | Single-contract functionality | `TestContract{NN}_*.t.sol` |
-| **Integration** | `test/integration/` | 2 | Full workflow cycles | `TestAction{NN}_*.t.sol` |
-| **Fork** | `test/fork/` | 9 | Live protocol interactions (real Aave + Pendle only) | `ForkTest{NN}_*.fork.t.sol` |
-| **Fuzz** | `test/fuzz/` | 4 | Stateless property testing | `FuzzTest{NN}_*.t.sol` |
-| **Invariant** | `test/invariant/` | 3 + 3 handlers | Multi-step protocol invariants | `InvariantTest{NN}_*.t.sol` |
+| Category        | Directory           | Files          | Purpose                                                                    | Naming                       |
+| --------------- | ------------------- | -------------- | -------------------------------------------------------------------------- | ---------------------------- |
+| **Base**        | `test/base/`        | 3              | Deployment fixtures, 3-phase provisioning                                  | `Base0{1,2,3}_Deploy*.t.sol` |
+| **Unit**        | `test/unit/`        | 21             | Single-contract functionality                                              | `TestContract{NN}_*.t.sol`   |
+| **Integration** | `test/integration/` | 2              | Full workflow cycles                                                       | `TestAction{NN}_*.t.sol`     |
+| **Fork**        | `test/fork/`        | 11             | Live protocol interactions + critical-path upgrade validation on Base fork | `ForkTest{NN}_*.fork.t.sol`  |
+| **Fuzz**        | `test/fuzz/`        | 4              | Stateless property testing                                                 | `FuzzTest{NN}_*.t.sol`       |
+| **Invariant**   | `test/invariant/`   | 3 + 3 handlers | Multi-step protocol invariants                                             | `InvariantTest{NN}_*.t.sol`  |
 
 ### Quick Reference
 
@@ -402,16 +402,16 @@ forge test --match-test test_Case01_deploymentState -v
 
 ### Coverage Targets
 
-| Contract | Lines | Statements | Branches | Functions |
-|----------|-------|------------|----------|-----------|
-| Overall | 60.43% | 61.00% | **49.23%** | 62.62% |
-| PayoutRouter | 88.72% | 88.85% | **87.80%** | 88.10% |
-| GiveVault4626 | 78.79% | 81.07% | **83.05%** | 71.70% |
+| Contract      | Lines  | Statements | Branches   | Functions |
+| ------------- | ------ | ---------- | ---------- | --------- |
+| Overall       | 60.43% | 61.00%     | **49.23%** | 62.62%    |
+| PayoutRouter  | 88.72% | 88.85%     | **87.80%** | 88.10%    |
+| GiveVault4626 | 78.79% | 81.07%     | **83.05%** | 71.70%    |
 
 ### Test Count
 
 - **Unit + Integration (default run):** 428+ tests, 0 failed, 0 skipped
-- **Fork:** 9 suites (AaveAdapter USDC/WETH/ETH, Pendle PT-yoUSD, PT-yoETH, post-maturity redemption, donor vault cycle, checkpoint voting, multi-vault, fork sanity)
+- **Fork:** 11 suites (AaveAdapter, Pendle yoUSD/yoETH + maturity, checkpoint voting, multi-vault, campaign lifecycle, depositETH, fork sanity, and critical-path upgrade fork checks via `ForkTest11_UpgradeCriticalPaths`)
 - **Fuzz:** 4 suites (10,000 runs each)
 - **Invariant:** 3 suites (256 runs, depth 500)
 
@@ -429,12 +429,12 @@ make frontend-e2e RPC_URL=... DEPLOYMENT_NETWORK=anvil
 
 **Test actions:**
 
-| File | Scope |
-|------|-------|
+| File           | Scope                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------- |
 | `TestAction00` | Environment initialization, role grants, campaign submission + approval, vault deployment |
-| `TestAction01` | USDC approval, deposit, time travel (30 days), yield harvest, preference config |
-| `TestAction02` | Payout execution, share redemption, principal return, invariant assertions |
-| `TestAction03` | Unauthorized access rejections, revert selector validation |
+| `TestAction01` | USDC approval, deposit, time travel (30 days), yield harvest, preference config           |
+| `TestAction02` | Payout execution, share redemption, principal return, invariant assertions                |
+| `TestAction03` | Unauthorized access rejections, revert selector validation                                |
 
 **Current status: 56/56 passing on BuildBear (strict runtime).**
 
@@ -530,12 +530,12 @@ uv run slither . \
 
 **Slither findings — full run, all triaged (see `slither/slither-findings.md`):**
 
-| Severity | Count | Accepted |
-|----------|-------|---------|
-| High | 2 | 0 |
-| Medium | 11 | 0 |
-| Low | 8 | 0 |
-| Informational | 6 | 0 |
+| Severity      | Count | Accepted |
+| ------------- | ----- | -------- |
+| High          | 2     | 0        |
+| Medium        | 11    | 0        |
+| Low           | 8     | 0        |
+| Informational | 6     | 0        |
 
 All 27 grouped findings are dismissed as false positives, intentional patterns, or mock-only code. No code changes required.
 
@@ -546,6 +546,7 @@ All 27 grouped findings are dismissed as false positives, intentional patterns, 
 Copy `.env.example` and fill in required values.
 
 **Required for local dev:**
+
 ```
 PRIVATE_KEY              Deployer/admin signer
 USER_PRIVATE_KEY         Test user signer
@@ -554,6 +555,7 @@ BASE_RPC_URL             RPC endpoint
 ```
 
 **Pendle adapter (Deploy02_VaultsAndAdapters.s.sol):**
+
 ```
 PENDLE_ROUTER_ADDRESS    0x888888888889758F76e7103c6CbF23ABbF58F946 (same on all chains)
 PENDLE_MARKET_ADDRESS    Pendle market address for the chosen PT
@@ -575,12 +577,13 @@ cast call <SY_ADDRESS> "getTokensOut()(address[])" --rpc-url $BASE_RPC_URL
 
 **Known Base mainnet Pendle markets:**
 
-| Market | Asset in | Token out | Market address |
-|--------|----------|-----------|----------------|
-| PT-yoUSD | USDC | yoUSD (`0x0000000f2eB9...`) | `0xA679ce6D07cb...` |
-| PT-yoETH | WETH | yoETH (`0x3A43AEC534...`) | `0x5d6E67FcE4...` |
+| Market   | Asset in | Token out                   | Market address      |
+| -------- | -------- | --------------------------- | ------------------- |
+| PT-yoUSD | USDC     | yoUSD (`0x0000000f2eB9...`) | `0xA679ce6D07cb...` |
+| PT-yoETH | WETH     | yoETH (`0x3A43AEC534...`)   | `0x5d6E67FcE4...`   |
 
 **Required for frontend E2E:**
+
 ```
 DEPLOYMENT_NETWORK       e.g. anvil, base-mainnet
 DEPLOYMENTS_FILE         Explicit path override (optional)
@@ -588,6 +591,7 @@ EXPECTED_CHAIN_ID        Validation guard (optional)
 ```
 
 **Protocol parameters:**
+
 ```
 PROTOCOL_FEE_BPS         100 = 1%
 ALLOW_DEFAULT_BROADCAST  false (require explicit signer)
