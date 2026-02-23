@@ -63,6 +63,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
     address public pendleRouter;
     address public pendleMarket;
     address public pendlePt;
+    address public pendleTokenOut; // SY redemption token; equals usdcToken for standard markets
 
     // Admin addresses
     address public admin;
@@ -95,6 +96,9 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
         pendleRouter = getEnvAddressOr("PENDLE_ROUTER_ADDRESS", address(0));
         pendleMarket = getEnvAddressOr("PENDLE_MARKET_ADDRESS", address(0));
         pendlePt = getEnvAddressOr("PENDLE_PT_ADDRESS", address(0));
+        // For yield-bearing markets (PT-yoUSD, PT-yoETH) set PENDLE_TOKEN_OUT_ADDRESS to the SY
+        // underlying (e.g. yoUSD, yoETH). Defaults to USDC for standard markets (PT-aUSDC).
+        pendleTokenOut = getEnvAddressOr("PENDLE_TOKEN_OUT_ADDRESS", usdcToken);
         requireAaveAdapter = getEnvBoolOr("REQUIRE_AAVE_ADAPTER", true);
 
         require(admin != address(0), "ADMIN_ADDRESS cannot be zero");
@@ -316,7 +320,7 @@ contract Deploy02_VaultsAndAdapters is BaseDeployment {
 
         if (pendleRouter != address(0) && pendleMarket != address(0) && pendlePt != address(0)) {
             pendleUsdcAdapter = new PendleAdapter(
-                pendleUsdcAdapterId, usdcToken, address(usdcVault), pendleRouter, pendleMarket, pendlePt
+                pendleUsdcAdapterId, usdcToken, address(usdcVault), pendleRouter, pendleMarket, pendlePt, pendleTokenOut
             );
 
             console.log("Pendle USDC Adapter:", address(pendleUsdcAdapter));

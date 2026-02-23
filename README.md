@@ -103,7 +103,7 @@ graph TD
 | `AaveAdapter` | `BalanceGrowth` | Aave V3 — aTokens grow autonomously |
 | `CompoundingAdapter` | `CompoundingValue` | Generic compounding (sUSDe, cTokens) |
 | `GrowthAdapter` | `BalanceGrowth` | Generic balance-growth pattern |
-| `PendleAdapter` | `FixedMaturityToken` | Pendle PT integration |
+| `PendleAdapter` | `FixedMaturityToken` | Pendle PT integration (standard and yield-bearing markets) |
 | `PTAdapter` | `FixedMaturityToken` | Principal token base |
 | `ClaimableYieldAdapter` | `ClaimableYield` | Manual yield claiming (liquidity mining) |
 | `ManualManageAdapter` | `Manual` | Operator-controlled off-chain positions |
@@ -313,7 +313,7 @@ test/
 ├── base/             Base01–Base03 (3-phase deployment fixtures)
 ├── unit/             TestContract01–21 (21 unit test suites)
 ├── integration/      TestAction01–02 (end-to-end workflows)
-├── fork/             ForkTest01–10 (live protocol interaction)
+├── fork/             ForkTest01–09 (9 live protocol tests)
 ├── fuzz/             FuzzTest01–04 (property-based tests)
 └── invariant/        InvariantTest01–03 + 3 handlers
 
@@ -365,7 +365,7 @@ deployments/
 | **Base** | `test/base/` | 3 | Deployment fixtures, 3-phase provisioning | `Base0{1,2,3}_Deploy*.t.sol` |
 | **Unit** | `test/unit/` | 21 | Single-contract functionality | `TestContract{NN}_*.t.sol` |
 | **Integration** | `test/integration/` | 2 | Full workflow cycles | `TestAction{NN}_*.t.sol` |
-| **Fork** | `test/fork/` | 10 | Live protocol interactions | `ForkTest{NN}_*.fork.t.sol` |
+| **Fork** | `test/fork/` | 9 | Live protocol interactions (real Aave + Pendle only) | `ForkTest{NN}_*.fork.t.sol` |
 | **Fuzz** | `test/fuzz/` | 4 | Stateless property testing | `FuzzTest{NN}_*.t.sol` |
 | **Invariant** | `test/invariant/` | 3 + 3 handlers | Multi-step protocol invariants | `InvariantTest{NN}_*.t.sol` |
 
@@ -411,7 +411,7 @@ forge test --match-test test_Case01_deploymentState -v
 ### Test Count
 
 - **Unit + Integration (default run):** 428+ tests, 0 failed, 0 skipped
-- **Fork:** 10 suites (AaveAdapter, wstETH, Pendle, checkpoint voting, multi-vault, payout gas)
+- **Fork:** 9 suites (AaveAdapter USDC/WETH/ETH, Pendle PT-yoUSD, PT-yoETH, post-maturity redemption, donor vault cycle, checkpoint voting, multi-vault, fork sanity)
 - **Fuzz:** 4 suites (10,000 runs each)
 - **Invariant:** 3 suites (256 runs, depth 500)
 
@@ -552,6 +552,33 @@ USER_PRIVATE_KEY         Test user signer
 USDC_ADDRESS             Deployed or mock USDC address
 BASE_RPC_URL             RPC endpoint
 ```
+
+**Pendle adapter (Deploy02_VaultsAndAdapters.s.sol):**
+```
+PENDLE_ROUTER_ADDRESS    0x888888888889758F76e7103c6CbF23ABbF58F946 (same on all chains)
+PENDLE_MARKET_ADDRESS    Pendle market address for the chosen PT
+PENDLE_PT_ADDRESS        Principal token address
+PENDLE_TOKEN_OUT_ADDRESS SY redemption token. Set to USDC for standard markets (PT-aUSDC).
+                         Set to yoUSD / yoETH for yield-bearing markets. Defaults to USDC
+                         when unset.
+```
+
+Yield-bearing Pendle markets (PT-yoUSD, PT-yoETH) have a SY that accepts USDC/WETH as
+deposit input but only releases its own underlying (yoUSD/yoETH) on redemption. The
+`tokenOut_` constructor parameter on `PendleAdapter` must match the SY's `getTokensOut()`
+list — passing the wrong token causes `SYInvalidTokenOut`.
+
+```bash
+# Verify correct tokenOut for a market's SY
+cast call <SY_ADDRESS> "getTokensOut()(address[])" --rpc-url $BASE_RPC_URL
+```
+
+**Known Base mainnet Pendle markets:**
+
+| Market | Asset in | Token out | Market address |
+|--------|----------|-----------|----------------|
+| PT-yoUSD | USDC | yoUSD (`0x0000000f2eB9...`) | `0xA679ce6D07cb...` |
+| PT-yoETH | WETH | yoETH (`0x3A43AEC534...`) | `0x5d6E67FcE4...` |
 
 **Required for frontend E2E:**
 ```

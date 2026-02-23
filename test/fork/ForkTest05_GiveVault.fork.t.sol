@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title   ForkTest06_GiveVault
+ * @title   ForkTest05_GiveVault
  * @author  GIVE Labs
  * @notice  End-to-end vault lifecycle test against live Aave V3 on Base mainnet
  * @dev     Tests full vault cycle with real Aave integration:
@@ -47,7 +47,7 @@ contract ForkMockCampaignRegistry {
     }
 }
 
-contract ForkTest06_GiveVault is ForkBase {
+contract ForkTest05_GiveVault is ForkBase {
     GiveVault4626 internal vault;
     AaveAdapter internal adapter;
     PayoutRouter internal router;

@@ -5,10 +5,24 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
+import {GiveErrors} from "../../src/utils/GiveErrors.sol";
 
-/// @title ForkTest01_AaveAdapter
-/// @notice Validates AaveAdapter behaviour against live Aave V3 on Base mainnet.
-///         This test contract acts as the vault (has VAULT_ROLE on the adapter).
+/**
+ * @title   ForkTest01_AaveAdapter
+ * @author  GIVE Labs
+ * @notice  Validates AaveAdapter behaviour against live Aave V3 on Base mainnet.
+ * @dev     This test contract acts as the vault (has VAULT_ROLE on the adapter).
+ *          Tests:
+ *          - invest() supplies USDC to Aave, receives aUSDC
+ *          - totalAssets() mirrors live aToken balance
+ *          - harvest() accrues real yield after vm.warp(30 days)
+ *          - divest() returns USDC within slippage tolerance
+ *          - emergencyWithdraw() recovers >= 99% principal from live Aave
+ *          - isHealthy() reflects live reserve state
+ *          - double-harvest drift stays within 1 wei
+ *          - emergencyMode blocks new invest() calls after activation
+ *          - paused adapter blocks invest/divest/harvest
+ */
 contract ForkTest01_AaveAdapter is ForkBase {
     AaveAdapter internal adapter;
 
@@ -118,6 +132,44 @@ contract ForkTest01_AaveAdapter is ForkBase {
 
     function test_is_healthy_on_live_reserve() public requiresFork {
         assertTrue(adapter.isHealthy(), "adapter not healthy on live reserve");
+    }
+
+    function test_isHealthy_false_after_emergency_mode_activated() public requiresFork {
+        assertTrue(adapter.isHealthy(), "should be healthy before emergency");
+
+        _invest(INVEST_AMOUNT);
+        adapter.emergencyWithdraw(); // activates emergencyMode
+
+        assertFalse(adapter.isHealthy(), "should be unhealthy after emergency mode activated");
+    }
+
+    function test_invest_reverts_when_emergency_mode_active() public requiresFork {
+        _invest(INVEST_AMOUNT);
+        adapter.emergencyWithdraw(); // activates emergencyMode
+
+        usdc.transfer(address(adapter), INVEST_AMOUNT);
+        vm.expectRevert(GiveErrors.AdapterPaused.selector);
+        adapter.invest(INVEST_AMOUNT);
+    }
+
+    function test_pause_blocks_invest_divest_harvest() public requiresFork {
+        _invest(INVEST_AMOUNT);
+
+        vm.prank(admin);
+        adapter.pause();
+
+        // invest blocked
+        usdc.transfer(address(adapter), 1_000e6);
+        vm.expectRevert();
+        adapter.invest(1_000e6);
+
+        // divest blocked
+        vm.expectRevert();
+        adapter.divest(1_000e6);
+
+        // harvest blocked
+        vm.expectRevert();
+        adapter.harvest();
     }
 
     function test_harvest_twice_does_not_drift_total_invested() public requiresFork {

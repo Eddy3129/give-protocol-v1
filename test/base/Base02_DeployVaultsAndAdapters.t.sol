@@ -367,7 +367,8 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
             address(usdcVault),
             makeAddr("pendleRouter"),
             makeAddr("pendleMarket"),
-            makeAddr("pendlePt")
+            makeAddr("pendlePt"),
+            address(usdc) // tokenOut = asset for standard markets (PT-aUSDC style)
         );
 
         emit log_named_address("Pendle USDC Adapter deployed at", address(pendleUsdcAdapter));

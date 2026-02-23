@@ -1,10 +1,10 @@
 # GIVE Protocol — Foundry Test Suite
 
-Last updated: 2026-02-21
+Last updated: 2026-02-22
 
 ## Overview
 
-The GIVE Protocol test suite contains **428 passing tests** across **44 Solidity test files** (~14,000 lines).
+The GIVE Protocol test suite contains **407 unit+integration tests** across **43 Solidity test files** (~14,000 lines).
 Tests are organized into six categories: base fixtures, unit, integration, fork, fuzz, and invariant.
 
 Coverage is measured on unit + integration only (fork/fuzz/invariant are validation layers, not coverage contributors).
@@ -26,7 +26,7 @@ test/
 │   ├── Base01_DeployCore.t.sol
 │   ├── Base02_DeployVaultsAndAdapters.t.sol
 │   └── Base03_DeployComprehensiveEnvironment.t.sol
-├── unit/                          # Single-contract functionality (21 files)
+├── unit/                          # Single-contract functionality (20 files)
 │   ├── TestContract01_ACLManager.t.sol
 │   ├── TestContract02_StrategyRegistry.t.sol
 │   ├── TestContract03_CampaignRegistry.t.sol
@@ -43,7 +43,6 @@ test/
 │   ├── TestContract14_ManualManageAdapter.t.sol
 │   ├── TestContract15_ClaimableYieldAdapter.t.sol
 │   ├── TestContract16_ACLShim.t.sol
-│   ├── TestContract17_PayoutRouterBranches.t.sol
 │   ├── TestContract18_GiveVault4626Branches.t.sol
 │   ├── TestContract19_CampaignRegistryBranches.t.sol
 │   ├── TestContract20_StorageLib.t.sol
@@ -195,16 +194,18 @@ Unit tests cover individual contracts in isolation with deterministic inputs.
 
 ### TestContract06_PayoutRouter.t.sol (root)
 
-**Scope**: PayoutRouter with mock dependencies
+**Scope**: PayoutRouter — 50 cases covering functional correctness and all branch paths
 
-| Test Area | Coverage |
-|-----------|----------|
-| Accumulator model: delta-per-share calculation | Monotonic invariant |
-| Fee timelock enforcement (3-day delay) | Propose → enforce |
-| Vault reassignment workflow | Old vault → new vault |
-| Preferences: fee override per campaign | Set/get/clear |
-| Yield recording from authorized callers | recordYield() |
-| Allocation tracking and claiming | allocate → claim |
+| Section | Cases | Coverage |
+|---------|-------|----------|
+| Initialisation & campaign wiring | 01–02 | Proxy deploy, campaign link |
+| Core yield distribution | 03–14 | Token conservation, proportional splits, `getPendingYield` vs `claimYield` accuracy, sequential accumulation, campaign totals, 75%-split hitting all three branches, `totalDistributions` counter |
+| Fee configuration & timelock | 15–22 | Propose/queue/execute/cancel, nonce sequencing, `isFeeChangeReady`, instant decrease |
+| Preferences | 23–27 | Set, update, invalid allocation (exact selector), zero-beneficiary, paused guard |
+| Share management | 28–30 | Per-user/total shares, vault reassignment event |
+| Access control | 31–37 | Unauthorized reverts, zero-address guards |
+| Edge cases | 38–43 | Zero amounts, no-shares, insufficient balance, tiny delta rounding, halted payouts |
+| Accumulator correctness & admin | 44–50 | Stale pref clear, zero-share accrual, halt/unhalt cycle, emergency withdraw, treasury update, pause round-trip |
 
 ### TestContract07_NGORegistry.t.sol (unit/)
 
@@ -325,34 +326,19 @@ Unit tests cover individual contracts in isolation with deterministic inputs.
 | Unauthorized access through shim | Revert paths |
 | Role inheritance through shim | Parent role resolution |
 
-### TestContract17_PayoutRouterBranches.t.sol (unit/)
-
-**Scope**: PayoutRouter branch coverage (87.80% branches)
-
-| Branch Cluster | Tests |
-|----------------|-------|
-| Fee changes | Propose fee, enforce after timelock, reject premature enforcement |
-| Vault reassignment | Reassign mid-cycle, accumulator continuity |
-| Preferences | Set campaign fee override, read override, clear override |
-| Yield recording | Record from authorized, reject unauthorized |
-| Allocation | Allocate shares, partial claim, full claim |
-| Accrual | recordYield with multiple campaigns, zero yield |
-| Error conditions | All revert selectors mapped |
-
 ### TestContract18_GiveVault4626Branches.t.sol (unit/)
 
-**Scope**: GiveVault4626 branch coverage (83.05% branches)
+**Scope**: GiveVault4626 — 41 cases covering full vault lifecycle and all branch paths
 
-| Branch Cluster | Tests |
-|----------------|-------|
-| Pause paths | pause(), unpause(), deposit-while-paused revert |
-| Grace period | setGracePeriod(), post-grace revert, GracePeriodExpired |
-| Adapter management | setAdapter(), unset, zero-address guard |
-| Harvest | harvest() with yield, harvest() with zero yield, unauthorized harvest |
-| Cash shortfall | deposit exceeds available cash, partial fill |
-| Emergency withdrawal | emergencyWithdraw(), from pause state |
-| ETH deposits | ETH-denominated vault path |
-| Slippage | ExcessiveLoss on high slippage redeem |
+| Section | Cases | Coverage |
+|---------|-------|----------|
+| Emergency system & pause guards | 01–06 | `pause`/`unpause`, deposit-while-paused, grace period set/expire, `GracePeriodExpired` revert |
+| Adapter management | 07–12 | Wrong asset/vault reverts, valid adapter accepted, zero-address clear, `forceClearAdapter` with funds revert, `emergencyWithdrawFromAdapter` drains adapter and credits vault |
+| Harvest pipeline | 13–18 | Revert guards + full wired vault→router→`claimYield` pipeline, harvest stats, share price non-decreasing |
+| Cash management & risk limits | 19–23 | Exact cash buffer split, `ensureSufficientCash` paths, `syncRiskLimits` + deposit limit enforcement, post-emergency resume |
+| Native ETH helpers | 24–32 | All revert guards + `depositETH` full accounting, `redeemETH` roundtrip, `withdrawETH` roundtrip |
+| Admin operations | 33–38 | Config validation, `setCashBufferBps` bounds, `getConfiguration`, `receive()` guard |
+| Guard rails | 39–41 | Emergency state checks |
 
 ### TestContract19_CampaignRegistryBranches.t.sol (unit/)
 

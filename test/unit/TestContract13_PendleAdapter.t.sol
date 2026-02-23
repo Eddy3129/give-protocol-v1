@@ -86,7 +86,8 @@ contract TestContract13_PendleAdapter is Test {
         market = makeAddr("pendleMarket");
 
         router = new MockPendleRouter(address(asset), address(pt), market);
-        adapter = new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), market, address(pt));
+        adapter =
+            new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), market, address(pt), address(asset));
 
         asset.mint(vault, 1_000_000e6);
     }
@@ -144,13 +145,16 @@ contract TestContract13_PendleAdapter is Test {
 
     function test_Contract13_Case05_invalidConfigReverts() public {
         vm.expectRevert(abi.encodeWithSelector(GiveErrors.InvalidConfiguration.selector));
-        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(0), market, address(pt));
+        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(0), market, address(pt), address(asset));
 
         vm.expectRevert(abi.encodeWithSelector(GiveErrors.InvalidConfiguration.selector));
-        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), address(0), address(pt));
+        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), address(0), address(pt), address(asset));
 
         vm.expectRevert(abi.encodeWithSelector(GiveErrors.InvalidConfiguration.selector));
-        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), market, address(0));
+        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), market, address(0), address(asset));
+
+        vm.expectRevert(abi.encodeWithSelector(GiveErrors.InvalidConfiguration.selector));
+        new PendleAdapter(ADAPTER_ID, address(asset), vault, address(router), market, address(pt), address(0));
     }
 
     function test_Contract13_Case06_divestWithoutPositionReturnsZero() public {

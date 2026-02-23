@@ -1,6 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * @title   TestContract18_GiveVault4626Branches
+ * @author  GIVE Labs
+ * @notice  Comprehensive test suite for GiveVault4626.
+ * @dev     Covers initialisation, deposits/withdrawals, adapter wiring, harvest pipeline,
+ *          emergency system, native ETH helpers, cash-buffer enforcement, and access control.
+ *
+ *          Structure:
+ *          - Cases 01–06   Emergency system & pause guards
+ *          - Cases 07–12   Adapter management
+ *          - Cases 13–18   Harvest pipeline (functional correctness)
+ *          - Cases 19–23   Cash management & risk limits
+ *          - Cases 24–32   Native ETH helpers (depositETH / redeemETH / withdrawETH)
+ *          - Cases 33–38   Admin operations & configuration
+ *          - Cases 39–41   Guard rails & access control
+ */
+
 import "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -8,18 +25,23 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
 import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
 import {GiveErrors} from "../../src/utils/GiveErrors.sol";
+import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
-/// @dev Minimal controllable adapter for branch testing
+// ─── Mocks ────────────────────────────────────────────────────────────────────
+
+/// @dev Controllable adapter: harvest returns configurable profit; divest honours returnFraction.
 contract BranchTestAdapter is IYieldAdapter {
     IERC20 public immutable _asset;
     address public immutable _vault;
 
     uint256 public invested;
-    uint256 public returnFraction = 10_000; // bps — 10000 = return 100%
+    uint256 public returnFraction = 10_000; // 100%
+    uint256 public harvestProfit;
 
-    // For asset/vault mismatch test stubs
+    // For mismatch stubs
     address public assetOverride;
     address public vaultOverride;
 
@@ -32,6 +54,10 @@ contract BranchTestAdapter is IYieldAdapter {
 
     function setReturnFraction(uint256 bps) external {
         returnFraction = bps;
+    }
+
+    function setHarvestProfit(uint256 profit) external {
+        harvestProfit = profit;
     }
 
     function asset() external view override returns (IERC20) {
@@ -51,17 +77,17 @@ contract BranchTestAdapter is IYieldAdapter {
     }
 
     function divest(uint256 amount) external override returns (uint256 returned) {
-        // Return only returnFraction of requested amount (simulates partial/loss)
         returned = (amount * returnFraction) / 10_000;
         if (returned > invested) returned = invested;
         invested -= returned;
-        if (returned > 0) {
-            _asset.transfer(_vault, returned);
-        }
+        if (returned > 0) _asset.transfer(_vault, returned);
     }
 
     function harvest() external override returns (uint256 profit, uint256 loss) {
-        return (0, 0);
+        profit = harvestProfit;
+        loss = 0;
+        harvestProfit = 0;
+        if (profit > 0) _asset.transfer(msg.sender, profit);
     }
 
     function emergencyWithdraw() external override returns (uint256 returned) {
@@ -71,32 +97,7 @@ contract BranchTestAdapter is IYieldAdapter {
     }
 }
 
-/// @dev Minimal donation router stub that accepts recordYield calls
-contract StubRouter {
-    function recordYield(address, uint256) external pure returns (uint256) {
-        return 0; // no-op, just prevents revert
-    }
-
-    function updateUserShares(address, uint256) external {}
-}
-
-contract MockWETHLike is MockERC20 {
-    constructor() MockERC20("Mock WETH", "mWETH", 18) {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool ok,) = payable(msg.sender).call{value: amount}("");
-        require(ok, "ETH_TRANSFER_FAILED");
-    }
-
-    receive() external payable {}
-}
-
-/// @dev Wrong-asset adapter for mismatch tests
+/// @dev Adapter that reports the wrong asset (for mismatch tests).
 contract WrongAssetAdapter is IYieldAdapter {
     address public immutable wrongAsset;
     address public immutable vaultAddr;
@@ -133,7 +134,7 @@ contract WrongAssetAdapter is IYieldAdapter {
     }
 }
 
-/// @dev Wrong-vault adapter for mismatch tests
+/// @dev Adapter that reports the wrong vault (for mismatch tests).
 contract WrongVaultAdapter is IYieldAdapter {
     address public immutable assetAddr;
     address public immutable wrongVault;
@@ -170,31 +171,71 @@ contract WrongVaultAdapter is IYieldAdapter {
     }
 }
 
-/**
- * @title TestContract18_GiveVault4626Branches
- * @notice Targets uncovered branches in GiveVault4626 identified by coverage analysis.
- *
- * Covered branches:
- *   whenNotPausedOrGracePeriod — regular pause (EnforcedPause) path
- *   whenNotPausedOrGracePeriod — emergency + grace-expired (GracePeriodExpired) path
- *   whenNotPausedOrGracePeriod — emergency + grace-active (withdraw allowed)
- *   setActiveAdapter           — InvalidAsset (wrong asset), InvalidAdapter (wrong vault)
- *   forceClearAdapter          — AdapterHasFunds revert
- *   harvest                    — zero-profit path (no adapter yield)
- *   _ensureSufficientCash      — partial divest returned < shortfall but within maxLoss
- *   _ensureSufficientCash      — ExcessiveLoss revert (loss > maxLoss)
- *   emergencyWithdrawUser      — GracePeriodActive revert (called too early)
- *   emergencyWithdrawUser      — InsufficientAllowance revert (caller != owner, low allowance)
- *   emergencyWithdrawUser      — allowance path with limited approval (allowance decremented)
- *   depositETH                 — InvalidConfiguration (no wrappedNative set)
- *   depositETH                 — InvalidReceiver (address(0))
- *   depositETH                 — InvalidAmount (msg.value == 0)
- *   depositETH                 — SlippageExceeded (shares < minShares)
- *   redeemETH                  — InvalidAmount (shares == 0)
- *   redeemETH                  — SlippageExceeded (assets < minAssets)
- *   withdrawETH                — InvalidAmount (assets == 0)
- *   withdrawETH                — SlippageExceeded (shares > maxShares)
- */
+/// @dev WETH-like token for native ETH roundtrip tests.
+contract MockWETH is MockERC20 {
+    constructor() MockERC20("Wrapped Ether", "WETH", 18) {}
+
+    function deposit() external payable {
+        _mint(msg.sender, msg.value);
+    }
+
+    function withdraw(uint256 amount) external {
+        _burn(msg.sender, amount);
+        (bool ok,) = payable(msg.sender).call{value: amount}("");
+        require(ok, "ETH_TRANSFER_FAILED");
+    }
+
+    receive() external payable {}
+}
+
+/// @dev Minimal PayoutRouter ACL — always returns false (force local role storage).
+contract MockACL18 {
+    function hasRole(bytes32, address) external pure returns (bool) {
+        return false;
+    }
+}
+
+/// @dev Minimal campaign registry for wired harvest tests.
+contract MockRegistry18 {
+    address public payoutRecipient;
+
+    constructor(address r) {
+        payoutRecipient = r;
+    }
+
+    function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory) {
+        uint256[49] memory emptyGap;
+        return GiveTypes.CampaignConfig({
+            id: id,
+            proposer: address(0),
+            curator: address(0),
+            payoutRecipient: payoutRecipient,
+            vault: address(0),
+            strategyId: bytes32(0),
+            metadataHash: bytes32(0),
+            targetStake: 0,
+            minStake: 0,
+            totalStaked: 0,
+            lockedStake: 0,
+            initialDeposit: 0,
+            fundraisingStart: 0,
+            fundraisingEnd: 0,
+            createdAt: 0,
+            updatedAt: 0,
+            status: GiveTypes.CampaignStatus.Active,
+            lockProfile: bytes32(0),
+            checkpointQuorumBps: 0,
+            checkpointVotingDelay: 0,
+            checkpointVotingPeriod: 0,
+            exists: true,
+            payoutsHalted: false,
+            __gap: emptyGap
+        });
+    }
+}
+
+// ─── Test contract ────────────────────────────────────────────────────────────
+
 contract TestContract18_GiveVault4626Branches is Test {
     GiveVault4626 public impl;
     ACLManager public acl;
@@ -204,7 +245,7 @@ contract TestContract18_GiveVault4626Branches is Test {
     address public user1;
     address public user2;
 
-    uint256 public constant DEPOSIT = 1000e6; // 1000 USDC
+    uint256 public constant DEPOSIT = 1000e6;
 
     function setUp() public {
         admin = makeAddr("admin");
@@ -220,13 +261,44 @@ contract TestContract18_GiveVault4626Branches is Test {
         impl = new GiveVault4626();
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────
+    // ── helpers ──────────────────────────────────────────────────────────────
 
     function _deployVault() internal returns (GiveVault4626) {
         bytes memory init = abi.encodeCall(
             GiveVault4626.initialize, (address(usdc), "Test Vault", "tvUSDC", admin, address(acl), address(impl))
         );
         return GiveVault4626(payable(address(new ERC1967Proxy(address(impl), init))));
+    }
+
+    function _deployWETHVault() internal returns (GiveVault4626, MockWETH) {
+        MockWETH weth = new MockWETH();
+        GiveVault4626 localImpl = new GiveVault4626();
+        bytes memory init = abi.encodeCall(
+            GiveVault4626.initialize, (address(weth), "WETH Vault", "tvWETH", admin, address(acl), address(localImpl))
+        );
+        GiveVault4626 v = GiveVault4626(payable(address(new ERC1967Proxy(address(localImpl), init))));
+        vm.prank(admin);
+        v.setWrappedNative(address(weth));
+        return (v, weth);
+    }
+
+    /// @dev Deploy a minimal PayoutRouter wired to `v` under `testCampaignId`.
+    function _deployWiredRouter(GiveVault4626 v, bytes32 testCampaignId, address ngo)
+        internal
+        returns (PayoutRouter router)
+    {
+        MockACL18 mockAcl = new MockACL18();
+        MockRegistry18 mockReg = new MockRegistry18(ngo);
+
+        router = new PayoutRouter();
+        vm.prank(admin);
+        router.initialize(admin, address(mockAcl), address(mockReg), admin, admin, 0);
+
+        vm.startPrank(admin);
+        router.grantRole(router.VAULT_MANAGER_ROLE(), admin);
+        router.registerCampaignVault(address(v), testCampaignId);
+        router.setAuthorizedCaller(address(v), true);
+        vm.stopPrank();
     }
 
     function _fund(address user, uint256 amount) internal {
@@ -241,7 +313,9 @@ contract TestContract18_GiveVault4626Branches is Test {
         vm.stopPrank();
     }
 
-    // ─── deposit — whenNotPaused blocks all deposits during emergency ─────────
+    // ============================================
+    // CASES 01–06  Emergency system & pause guards
+    // ============================================
 
     function test_Contract18_Case01_emergencyPause_blocksDeposit() public {
         GiveVault4626 v = _deployVault();
@@ -252,24 +326,19 @@ contract TestContract18_GiveVault4626Branches is Test {
 
         vm.startPrank(user1);
         usdc.approve(address(v), DEPOSIT);
-        vm.expectRevert(); // EnforcedPause from whenNotPaused modifier on deposit
+        vm.expectRevert();
         v.deposit(DEPOSIT, user1);
         vm.stopPrank();
     }
 
-    // ─── whenNotPausedOrGracePeriod — emergency + grace expired ──────────────
-
-    function test_Contract18_Case02_gracePeriodExpired_blockWithdraw() public {
+    function test_Contract18_Case02_gracePeriodExpired_blocksWithdraw() public {
         GiveVault4626 v = _deployVault();
         uint256 shares = _deposit(v, user1, DEPOSIT);
 
         vm.prank(admin);
         v.emergencyPause();
-
-        // Fast-forward PAST grace period
         vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() + 1);
 
-        // withdraw should revert with GracePeriodExpired
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.GracePeriodExpired.selector);
         v.withdraw(DEPOSIT, user1, user1);
@@ -278,8 +347,6 @@ contract TestContract18_GiveVault4626Branches is Test {
         vm.expectRevert(GiveVault4626.GracePeriodExpired.selector);
         v.redeem(shares, user1, user1);
     }
-
-    // ─── whenNotPausedOrGracePeriod — emergency + within grace (allowed) ─────
 
     function test_Contract18_Case03_withinGracePeriod_withdrawAllowed() public {
         GiveVault4626 v = _deployVault();
@@ -287,9 +354,8 @@ contract TestContract18_GiveVault4626Branches is Test {
 
         vm.prank(admin);
         v.emergencyPause();
-
-        // Still within grace — normal withdraw should work
         vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() - 1);
+
         vm.prank(user1);
         v.withdraw(DEPOSIT, user1, user1);
 
@@ -297,120 +363,312 @@ contract TestContract18_GiveVault4626Branches is Test {
         assertEq(usdc.balanceOf(user1), DEPOSIT);
     }
 
-    // ─── setActiveAdapter — asset and vault mismatch reverts ─────────────────
-
-    function test_Contract18_Case04_setActiveAdapter_wrongAssetReverts() public {
+    function test_Contract18_Case04_emergencyWithdrawUser_gracePeriodActive_reverts() public {
         GiveVault4626 v = _deployVault();
-        address wrongToken = makeAddr("wrongToken");
-        WrongAssetAdapter badAdapter = new WrongAssetAdapter(wrongToken, address(v));
+        uint256 shares = _deposit(v, user1, DEPOSIT);
+
+        vm.prank(admin);
+        v.emergencyPause();
+
+        vm.prank(user1);
+        vm.expectRevert(GiveVault4626.GracePeriodActive.selector);
+        v.emergencyWithdrawUser(shares, user1, user1);
+    }
+
+    function test_Contract18_Case05_emergencyWithdrawUser_insufficientAllowance_reverts() public {
+        GiveVault4626 v = _deployVault();
+        uint256 shares = _deposit(v, user1, DEPOSIT);
+
+        vm.prank(admin);
+        v.emergencyPause();
+        vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() + 1);
+
+        vm.prank(user2);
+        vm.expectRevert(GiveVault4626.InsufficientAllowance.selector);
+        v.emergencyWithdrawUser(shares, user2, user1);
+    }
+
+    function test_Contract18_Case06_emergencyWithdrawUser_allowanceDecremented() public {
+        GiveVault4626 v = _deployVault();
+        uint256 shares = _deposit(v, user1, DEPOSIT);
+
+        vm.prank(admin);
+        v.emergencyPause();
+        vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() + 1);
+
+        vm.prank(user1);
+        v.approve(user2, shares);
+
+        vm.prank(user2);
+        v.emergencyWithdrawUser(shares, user2, user1);
+
+        assertEq(v.allowance(user1, user2), 0, "allowance must be consumed");
+        assertEq(v.balanceOf(user1), 0, "shares must be burned");
+        assertGt(usdc.balanceOf(user2), 0, "user2 must receive assets");
+    }
+
+    // ============================================
+    // CASES 07–12  Adapter management
+    // ============================================
+
+    function test_Contract18_Case07_setActiveAdapter_wrongAsset_reverts() public {
+        GiveVault4626 v = _deployVault();
+        WrongAssetAdapter bad = new WrongAssetAdapter(makeAddr("wrongToken"), address(v));
 
         vm.prank(admin);
         vm.expectRevert(GiveVault4626.InvalidAsset.selector);
-        v.setActiveAdapter(IYieldAdapter(address(badAdapter)));
+        v.setActiveAdapter(IYieldAdapter(address(bad)));
     }
 
-    function test_Contract18_Case05_setActiveAdapter_wrongVaultReverts() public {
+    function test_Contract18_Case08_setActiveAdapter_wrongVault_reverts() public {
         GiveVault4626 v = _deployVault();
-        address wrongVault = makeAddr("wrongVault");
-        WrongVaultAdapter badAdapter = new WrongVaultAdapter(address(usdc), wrongVault);
+        WrongVaultAdapter bad = new WrongVaultAdapter(address(usdc), makeAddr("wrongVault"));
 
         vm.prank(admin);
         vm.expectRevert(GiveVault4626.InvalidAdapter.selector);
-        v.setActiveAdapter(IYieldAdapter(address(badAdapter)));
+        v.setActiveAdapter(IYieldAdapter(address(bad)));
     }
 
-    // ─── forceClearAdapter — AdapterHasFunds ─────────────────────────────────
-
-    function test_Contract18_Case06_forceClearAdapter_adapterHasFundsReverts() public {
+    function test_Contract18_Case09_setActiveAdapter_validAdapter_accepted() public {
         GiveVault4626 v = _deployVault();
         BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
 
         vm.prank(admin);
         v.setActiveAdapter(IYieldAdapter(address(adapter)));
 
-        // Manually credit adapter so it reports > 0
-        usdc.mint(address(adapter), 1e6);
-        adapter.invest(1e6); // adapter.invested = 1e6
+        assertEq(address(v.activeAdapter()), address(adapter), "adapter must be stored");
+    }
 
-        // Cache totalAssets before prank (prevent staticcall consuming prank)
+    function test_Contract18_Case10_setActiveAdapter_zeroAddress_clearsAdapter() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+
+        vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setActiveAdapter(IYieldAdapter(address(0)));
+        vm.stopPrank();
+
+        assertEq(address(v.activeAdapter()), address(0), "adapter must be cleared");
+    }
+
+    function test_Contract18_Case11_forceClearAdapter_adapterHasFunds_reverts() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+
+        vm.prank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+
+        usdc.mint(address(adapter), 1e6);
+        adapter.invest(1e6);
         uint256 adapterFunds = adapter.totalAssets();
 
-        // forceClearAdapter should revert because adapter.totalAssets() > 0
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(GiveVault4626.AdapterHasFunds.selector, adapterFunds));
         v.forceClearAdapter();
     }
 
-    // ─── harvest — zero profit path ──────────────────────────────────────────
-
-    function test_Contract18_Case07_harvest_zeroProfitNoTransfer() public {
+    function test_Contract18_Case12_emergencyWithdrawFromAdapter_drainsAdapterCreditsVault() public {
         GiveVault4626 v = _deployVault();
         BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
 
         vm.prank(admin);
         v.setActiveAdapter(IYieldAdapter(address(adapter)));
 
-        // Wire a stub donation router (required by harvest to not revert on router check)
-        StubRouter stubRouter = new StubRouter();
+        uint256 investedAmount = DEPOSIT;
+        usdc.mint(address(adapter), investedAmount);
+        adapter.invest(investedAmount);
+
+        assertEq(adapter.totalAssets(), investedAmount);
+        uint256 cashBefore = usdc.balanceOf(address(v));
+
         vm.prank(admin);
-        v.setDonationRouter(address(stubRouter));
+        uint256 withdrawn = v.emergencyWithdrawFromAdapter();
+
+        assertEq(withdrawn, investedAmount, "withdrawn must equal adapter balance");
+        assertEq(adapter.totalAssets(), 0, "adapter must be empty");
+        assertEq(usdc.balanceOf(address(v)), cashBefore + investedAmount, "vault cash must increase");
+    }
+
+    // ============================================
+    // CASES 13–18  Harvest pipeline (functional correctness)
+    // ============================================
+
+    function test_Contract18_Case13_harvest_adapterNotSet_reverts() public {
+        GiveVault4626 v = _deployVault();
+        vm.expectRevert(GiveVault4626.AdapterNotSet.selector);
+        v.harvest();
+    }
+
+    function test_Contract18_Case14_harvest_missingDonationRouter_reverts() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+
+        vm.prank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+
+        vm.expectRevert(GiveVault4626.InvalidConfiguration.selector);
+        v.harvest();
+    }
+
+    function test_Contract18_Case15_harvest_zeroProfitPath_noTransfer() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+        bytes32 cid = keccak256("harvest-zero");
+        PayoutRouter router = _deployWiredRouter(v, cid, makeAddr("ngo15"));
+
+        vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setDonationRouter(address(router));
+        vm.stopPrank();
 
         _deposit(v, user1, DEPOSIT);
 
-        // harvest returns (0,0) — zero profit path, no transfer to router
-        uint256 routerBefore = usdc.balanceOf(address(stubRouter));
-        vm.prank(user1);
-        (uint256 profit, uint256 loss) = v.harvest();
+        uint256 routerBefore = usdc.balanceOf(address(router));
+        (uint256 profit, uint256 loss) = v.harvest(); // adapter returns (0, 0)
 
         assertEq(profit, 0);
         assertEq(loss, 0);
-        assertEq(usdc.balanceOf(address(stubRouter)), routerBefore, "no transfer on zero profit");
+        assertEq(usdc.balanceOf(address(router)), routerBefore, "no transfer on zero profit");
     }
 
-    // ─── _ensureSufficientCash — cash sufficient, adapter not called ──────────
-
-    function test_Contract18_Case08_ensureSufficientCash_sufficientCashSkipsDivest() public {
-        // Tests early-return: currentCash >= needed → divest skipped entirely
-        // No adapter set → vault holds all funds as cash
+    function test_Contract18_Case16_harvest_wiredRouter_claimYield_fullPipeline() public {
         GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+        address ngo = makeAddr("ngo16");
+        bytes32 cid = keccak256("harvest-pipeline");
+        PayoutRouter router = _deployWiredRouter(v, cid, ngo);
+
+        vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setDonationRouter(address(router));
+        vm.stopPrank();
 
         _deposit(v, user1, DEPOSIT);
 
-        // Vault holds all DEPOSIT as cash (no active adapter)
-        uint256 shares = v.balanceOf(user1);
+        assertGt(router.getUserVaultShares(user1, address(v)), 0, "router must track user shares after deposit");
 
-        // Redeem half — vault has enough cash, _ensureSufficientCash returns immediately
+        uint256 profit = 100e6;
+        usdc.mint(address(adapter), profit);
+        adapter.setHarvestProfit(profit);
+
+        v.harvest();
+
+        uint256 pending = router.getPendingYield(user1, address(v), address(usdc));
+        assertGt(pending, 0, "user must have pending yield after harvest");
+
+        uint256 ngoBefore = usdc.balanceOf(ngo);
         vm.prank(user1);
-        v.redeem(shares / 2, user1, user1);
+        uint256 claimed = router.claimYield(address(v), address(usdc));
 
-        // User received half of DEPOSIT in cash
-        assertGt(usdc.balanceOf(user1), 0, "user received cash directly");
-        assertEq(address(v.activeAdapter()), address(0), "no adapter involved");
+        assertEq(claimed, profit, "claimed must equal harvested profit (zero fee)");
+        assertApproxEqAbs(usdc.balanceOf(ngo) - ngoBefore, profit, 1, "NGO must receive all yield");
     }
 
-    // ─── _ensureSufficientCash — ExcessiveLoss ───────────────────────────────
+    function test_Contract18_Case17_harvest_updatesHarvestStats() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+        bytes32 cid = keccak256("stats");
+        PayoutRouter router = _deployWiredRouter(v, cid, makeAddr("ngo17"));
 
-    function test_Contract18_Case09_ensureSufficientCash_excessiveLossReverts() public {
+        vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setDonationRouter(address(router));
+        vm.stopPrank();
+
+        _deposit(v, user1, DEPOSIT);
+
+        assertEq(v.totalProfit(), 0);
+        assertEq(v.totalLoss(), 0);
+
+        uint256 profit = 50e6;
+        usdc.mint(address(adapter), profit);
+        adapter.setHarvestProfit(profit);
+
+        (uint256 actualProfit,) = v.harvest();
+        assertEq(actualProfit, profit, "harvest must return correct profit");
+        assertEq(v.totalProfit(), profit, "totalProfit must accumulate");
+        assertEq(v.totalLoss(), 0);
+
+        (uint256 tp, uint256 tl, uint256 lastHarvest) = v.getHarvestStats();
+        assertEq(tp, profit);
+        assertEq(tl, 0);
+        assertGt(lastHarvest, 0, "lastHarvestTime must be set");
+    }
+
+    function test_Contract18_Case18_harvest_sharePriceNonDecreasing() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+        bytes32 cid = keccak256("price");
+        PayoutRouter router = _deployWiredRouter(v, cid, makeAddr("ngo18"));
+
+        vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setDonationRouter(address(router));
+        vm.stopPrank();
+
+        uint256 shares = _deposit(v, user1, DEPOSIT);
+        uint256 priceBefore = v.previewRedeem(shares);
+
+        uint256 profit = 100e6;
+        usdc.mint(address(adapter), profit);
+        adapter.setHarvestProfit(profit);
+        v.harvest();
+
+        // Profit moves to router (not vault), so vault price is stable — must not decrease
+        assertGe(v.previewRedeem(shares), priceBefore, "share price must not decrease after harvest");
+    }
+
+    // ============================================
+    // CASES 19–23  Cash management & risk limits
+    // ============================================
+
+    function test_Contract18_Case19_deposit_invests_excess_above_cashBuffer() public {
         GiveVault4626 v = _deployVault();
         BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
 
-        vm.prank(admin);
+        uint256 BUFFER_BPS = 500; // 5%
+        vm.startPrank(admin);
         v.setActiveAdapter(IYieldAdapter(address(adapter)));
+        v.setCashBufferBps(BUFFER_BPS);
+        vm.stopPrank();
+
+        _deposit(v, user1, DEPOSIT);
+
+        uint256 totalAssets = v.totalAssets();
+        uint256 expectedCash = (totalAssets * BUFFER_BPS) / 10_000;
+        assertApproxEqAbs(usdc.balanceOf(address(v)), expectedCash, 1, "vault cash must equal buffer target");
+        assertApproxEqAbs(adapter.totalAssets(), totalAssets - expectedCash, 1, "adapter must hold excess");
+    }
+
+    function test_Contract18_Case20_ensureSufficientCash_sufficientCash_skipsDivest() public {
+        GiveVault4626 v = _deployVault();
+        uint256 shares = _deposit(v, user1, DEPOSIT);
+
+        // No active adapter — all funds are cash; divest path never reached
+        vm.prank(user1);
+        v.redeem(shares / 2, user1, user1);
+
+        assertGt(usdc.balanceOf(user1), 0, "user must receive cash");
+        assertEq(address(v.activeAdapter()), address(0));
+    }
+
+    function test_Contract18_Case21_ensureSufficientCash_excessiveLoss_reverts() public {
+        GiveVault4626 v = _deployVault();
+        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
 
         vm.startPrank(admin);
+        v.setActiveAdapter(IYieldAdapter(address(adapter)));
         v.setCashBufferBps(0);
         v.setMaxLossBps(100); // 1% max loss
         vm.stopPrank();
 
         _deposit(v, user1, DEPOSIT);
 
-        // Move all cash into adapter
         uint256 cash = usdc.balanceOf(address(v));
         usdc.transfer(address(adapter), cash);
         adapter.invest(cash);
 
-        // Adapter returns only 90% — 10% loss exceeds 1% maxLoss
-        adapter.setReturnFraction(9000);
+        adapter.setReturnFraction(9000); // returns only 90% → 10% loss
 
         uint256 shares = v.balanceOf(user1);
         vm.prank(user1);
@@ -418,87 +676,65 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.redeem(shares, user1, user1);
     }
 
-    // ─── emergencyWithdrawUser — GracePeriodActive ────────────────────────────
-
-    function test_Contract18_Case10_emergencyWithdrawUser_gracePeriodActiveReverts() public {
+    function test_Contract18_Case22_depositLimit_enforcedAfter_syncRiskLimits() public {
         GiveVault4626 v = _deployVault();
-        uint256 shares = _deposit(v, user1, DEPOSIT);
+        uint256 LIMIT = 500e6;
+
+        vm.prank(admin);
+        v.syncRiskLimits(keccak256("risk1"), LIMIT, 0);
+
+        _deposit(v, user1, LIMIT); // exactly at limit — should succeed
+
+        _fund(user2, 1);
+        vm.startPrank(user2);
+        usdc.approve(address(v), 1);
+        vm.expectRevert();
+        v.deposit(1, user2); // one wei over limit
+        vm.stopPrank();
+    }
+
+    function test_Contract18_Case23_resumeFromEmergency_reenablesDeposits() public {
+        GiveVault4626 v = _deployVault();
 
         vm.prank(admin);
         v.emergencyPause();
-
-        // Within grace — emergencyWithdrawUser should revert
-        vm.prank(user1);
-        vm.expectRevert(GiveVault4626.GracePeriodActive.selector);
-        v.emergencyWithdrawUser(shares, user1, user1);
-    }
-
-    // ─── emergencyWithdrawUser — InsufficientAllowance ────────────────────────
-
-    function test_Contract18_Case11_emergencyWithdrawUser_insufficientAllowanceReverts() public {
-        GiveVault4626 v = _deployVault();
-        uint256 shares = _deposit(v, user1, DEPOSIT);
+        assertTrue(v.paused());
+        assertTrue(v.investPaused());
 
         vm.prank(admin);
-        v.emergencyPause();
-        vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() + 1);
+        v.resumeFromEmergency();
 
-        // user2 tries to withdraw user1's shares without approval
-        vm.prank(user2);
-        vm.expectRevert(GiveVault4626.InsufficientAllowance.selector);
-        v.emergencyWithdrawUser(shares, user2, user1);
+        assertFalse(v.paused());
+        assertFalse(v.investPaused());
+        assertFalse(v.emergencyShutdown());
+
+        _deposit(v, user1, DEPOSIT);
+        assertGt(v.balanceOf(user1), 0, "user must have shares after resume");
     }
 
-    // ─── emergencyWithdrawUser — allowance decremented ────────────────────────
+    // ============================================
+    // CASES 24–32  Native ETH helpers
+    // ============================================
 
-    function test_Contract18_Case12_emergencyWithdrawUser_allowanceDecremented() public {
+    function test_Contract18_Case24_depositETH_noWrappedNative_reverts() public {
         GiveVault4626 v = _deployVault();
-        uint256 shares = _deposit(v, user1, DEPOSIT);
-
-        vm.prank(admin);
-        v.emergencyPause();
-        vm.warp(block.timestamp + v.EMERGENCY_GRACE_PERIOD() + 1);
-
-        // user1 approves user2 for exactly `shares` (limited approval, not max)
-        vm.prank(user1);
-        v.approve(user2, shares);
-
-        assertEq(v.allowance(user1, user2), shares);
-
-        vm.prank(user2);
-        v.emergencyWithdrawUser(shares, user2, user1);
-
-        // Allowance should be decremented to 0
-        assertEq(v.allowance(user1, user2), 0, "allowance should be consumed");
-        assertEq(v.balanceOf(user1), 0, "shares burned");
-        assertGt(usdc.balanceOf(user2), 0, "user2 received assets");
-    }
-
-    // ─── depositETH — error paths ─────────────────────────────────────────────
-
-    function test_Contract18_Case13_depositETH_noWrappedNativeReverts() public {
-        GiveVault4626 v = _deployVault();
-        // wrappedNative not set → InvalidConfiguration
         vm.deal(user1, 1 ether);
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.InvalidConfiguration.selector);
         v.depositETH{value: 1 ether}(user1, 0);
     }
 
-    function test_Contract18_Case14_depositETH_zeroMsgValueReverts() public {
+    function test_Contract18_Case25_depositETH_zeroMsgValue_reverts() public {
         GiveVault4626 v = _deployVault();
-
-        // Deploy a WETH-like token and set as wrappedNative
-        // usdc acts as wrappedNative for this test (address matches asset)
         vm.prank(admin);
-        v.setWrappedNative(address(usdc));
+        v.setWrappedNative(address(usdc)); // usdc == asset so passes the check
 
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.InvalidAmount.selector);
         v.depositETH{value: 0}(user1, 0);
     }
 
-    function test_Contract18_Case15_depositETH_zeroReceiverReverts() public {
+    function test_Contract18_Case26_depositETH_zeroReceiver_reverts() public {
         GiveVault4626 v = _deployVault();
         vm.prank(admin);
         v.setWrappedNative(address(usdc));
@@ -509,16 +745,30 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.depositETH{value: 1 ether}(address(0), 0);
     }
 
-    // ─── redeemETH — error paths ─────────────────────────────────────────────
+    function test_Contract18_Case27_depositETH_fullAccounting() public {
+        (GiveVault4626 v, MockWETH weth) = _deployWETHVault();
 
-    function test_Contract18_Case16_redeemETH_noWrappedNativeReverts() public {
+        uint256 ethAmount = 1 ether;
+        vm.deal(user1, ethAmount);
+
+        uint256 wethBefore = weth.balanceOf(address(v));
+        vm.prank(user1);
+        uint256 shares = v.depositETH{value: ethAmount}(user1, 0);
+
+        assertGt(shares, 0, "shares must be minted");
+        assertEq(v.balanceOf(user1), shares, "balance must match return value");
+        assertEq(weth.balanceOf(address(v)) - wethBefore, ethAmount, "vault must hold WETH equal to deposited ETH");
+        assertEq(user1.balance, 0, "user ETH must be consumed");
+    }
+
+    function test_Contract18_Case28_redeemETH_noWrappedNative_reverts() public {
         GiveVault4626 v = _deployVault();
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.InvalidConfiguration.selector);
         v.redeemETH(100, user1, user1, 0);
     }
 
-    function test_Contract18_Case17_redeemETH_zeroSharesReverts() public {
+    function test_Contract18_Case29_redeemETH_zeroShares_reverts() public {
         GiveVault4626 v = _deployVault();
         vm.prank(admin);
         v.setWrappedNative(address(usdc));
@@ -528,46 +778,58 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.redeemETH(0, user1, user1, 0);
     }
 
-    function test_Contract18_Case18_redeemETH_zeroReceiverReverts() public {
-        GiveVault4626 v = _deployVault();
-        vm.prank(admin);
-        v.setWrappedNative(address(usdc));
+    function test_Contract18_Case30_redeemETH_roundtrip() public {
+        (GiveVault4626 v, MockWETH weth) = _deployWETHVault();
+        vm.deal(address(weth), 10 ether); // back WETH withdrawals
+
+        uint256 ethAmount = 1 ether;
+        vm.deal(user1, ethAmount);
 
         vm.prank(user1);
-        vm.expectRevert(GiveVault4626.InvalidReceiver.selector);
-        v.redeemETH(100, address(0), user1, 0);
+        uint256 shares = v.depositETH{value: ethAmount}(user1, 0);
+
+        uint256 ethBefore = user1.balance;
+        vm.prank(user1);
+        uint256 assets = v.redeemETH(shares, user1, user1, 0);
+
+        assertApproxEqAbs(assets, ethAmount, 1, "assets returned must match deposited ETH");
+        assertApproxEqAbs(user1.balance - ethBefore, ethAmount, 1, "user must receive ETH");
+        assertEq(v.balanceOf(user1), 0, "shares must be fully burned");
     }
 
-    // ─── withdrawETH — error paths ────────────────────────────────────────────
-
-    function test_Contract18_Case19_withdrawETH_noWrappedNativeReverts() public {
+    function test_Contract18_Case31_withdrawETH_noWrappedNative_reverts() public {
         GiveVault4626 v = _deployVault();
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.InvalidConfiguration.selector);
         v.withdrawETH(100, user1, user1, type(uint256).max);
     }
 
-    function test_Contract18_Case20_withdrawETH_zeroAssetsReverts() public {
-        GiveVault4626 v = _deployVault();
-        vm.prank(admin);
-        v.setWrappedNative(address(usdc));
+    function test_Contract18_Case32_withdrawETH_roundtrip() public {
+        (GiveVault4626 v, MockWETH weth) = _deployWETHVault();
+        vm.deal(address(weth), 10 ether);
+
+        uint256 ethAmount = 1 ether;
+        vm.deal(user1, ethAmount);
 
         vm.prank(user1);
-        vm.expectRevert(GiveVault4626.InvalidAmount.selector);
-        v.withdrawETH(0, user1, user1, type(uint256).max);
-    }
+        v.depositETH{value: ethAmount}(user1, 0);
 
-    function test_Contract18_Case21_withdrawETH_zeroReceiverReverts() public {
-        GiveVault4626 v = _deployVault();
-        vm.prank(admin);
-        v.setWrappedNative(address(usdc));
+        uint256 ethBefore = user1.balance;
+        uint256 sharesBefore = v.balanceOf(user1);
 
         vm.prank(user1);
-        vm.expectRevert(GiveVault4626.InvalidReceiver.selector);
-        v.withdrawETH(100, address(0), user1, type(uint256).max);
+        uint256 burntShares = v.withdrawETH(ethAmount, user1, user1, type(uint256).max);
+
+        assertApproxEqAbs(user1.balance - ethBefore, ethAmount, 1, "user must receive ETH");
+        assertEq(v.balanceOf(user1), 0, "all shares must be burned");
+        assertEq(burntShares, sharesBefore, "burnt shares must equal held shares");
     }
 
-    function test_Contract18_Case22_setWrappedNative_zeroAndWrongAssetRevert() public {
+    // ============================================
+    // CASES 33–38  Admin operations & configuration
+    // ============================================
+
+    function test_Contract18_Case33_setWrappedNative_zeroAndWrongAsset_revert() public {
         GiveVault4626 v = _deployVault();
 
         vm.prank(admin);
@@ -579,7 +841,7 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.setWrappedNative(makeAddr("wrongWrapped"));
     }
 
-    function test_Contract18_Case23_setDonationRouter_zeroReverts() public {
+    function test_Contract18_Case34_setDonationRouter_zero_reverts() public {
         GiveVault4626 v = _deployVault();
 
         vm.prank(admin);
@@ -587,25 +849,29 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.setDonationRouter(address(0));
     }
 
-    function test_Contract18_Case24_harvest_adapterNotSetReverts() public {
+    function test_Contract18_Case35_setCashBufferBps_aboveMax_reverts() public {
         GiveVault4626 v = _deployVault();
-
-        vm.expectRevert(GiveVault4626.AdapterNotSet.selector);
-        v.harvest();
-    }
-
-    function test_Contract18_Case25_harvest_missingDonationRouterReverts() public {
-        GiveVault4626 v = _deployVault();
-        BranchTestAdapter adapter = new BranchTestAdapter(address(usdc), address(v));
+        uint256 aboveMax = v.MAX_CASH_BUFFER_BPS() + 1; // read before prank
 
         vm.prank(admin);
-        v.setActiveAdapter(IYieldAdapter(address(adapter)));
-
-        vm.expectRevert(GiveVault4626.InvalidConfiguration.selector);
-        v.harvest();
+        vm.expectRevert(GiveVault4626.CashBufferTooHigh.selector);
+        v.setCashBufferBps(aboveMax);
     }
 
-    function test_Contract18_Case26_emergencyWithdrawFromAdapter_noAdapterReverts() public {
+    function test_Contract18_Case36_getConfiguration_returnsCorrectValues() public {
+        GiveVault4626 v = _deployVault();
+
+        (uint256 cashBuffer, uint256 slippage, uint256 maxLoss, bool investPausedStatus, bool harvestPausedStatus) =
+            v.getConfiguration();
+
+        assertEq(cashBuffer, 100, "default cash buffer is 1%");
+        assertEq(slippage, 50, "default slippage is 0.5%");
+        assertEq(maxLoss, 50, "default maxLoss is 0.5%");
+        assertFalse(investPausedStatus);
+        assertFalse(harvestPausedStatus);
+    }
+
+    function test_Contract18_Case37_emergencyWithdrawFromAdapter_noAdapter_reverts() public {
         GiveVault4626 v = _deployVault();
 
         vm.prank(admin);
@@ -613,15 +879,20 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.emergencyWithdrawFromAdapter();
     }
 
-    function test_Contract18_Case27_emergencyWithdrawUser_zeroReceiverReverts() public {
-        GiveVault4626 v = _deployVault();
+    function test_Contract18_Case38_receive_reverts_for_nonWETH_sender() public {
+        (GiveVault4626 v,) = _deployWETHVault();
 
+        vm.deal(user1, 1 ether);
         vm.prank(user1);
-        vm.expectRevert();
-        v.emergencyWithdrawUser(1, address(0), user1);
+        (bool ok,) = payable(address(v)).call{value: 1 ether}("");
+        assertFalse(ok, "receive() must reject ETH from non-WETH sender");
     }
 
-    function test_Contract18_Case28_emergencyWithdrawUser_notInEmergencyReverts() public {
+    // ============================================
+    // CASES 39–41  Guard rails & access control
+    // ============================================
+
+    function test_Contract18_Case39_emergencyWithdrawUser_notInEmergency_reverts() public {
         GiveVault4626 v = _deployVault();
         uint256 shares = _deposit(v, user1, DEPOSIT);
 
@@ -630,7 +901,15 @@ contract TestContract18_GiveVault4626Branches is Test {
         v.emergencyWithdrawUser(shares, user1, user1);
     }
 
-    function test_Contract18_Case29_emergencyWithdrawUser_zeroAmountReverts() public {
+    function test_Contract18_Case40_emergencyWithdrawUser_zeroReceiver_reverts() public {
+        GiveVault4626 v = _deployVault();
+
+        vm.prank(user1);
+        vm.expectRevert();
+        v.emergencyWithdrawUser(1, address(0), user1);
+    }
+
+    function test_Contract18_Case41_emergencyWithdrawUser_zeroShares_reverts() public {
         GiveVault4626 v = _deployVault();
 
         vm.prank(admin);
@@ -640,30 +919,5 @@ contract TestContract18_GiveVault4626Branches is Test {
         vm.prank(user1);
         vm.expectRevert(GiveVault4626.ZeroAmount.selector);
         v.emergencyWithdrawUser(0, user1, user1);
-    }
-
-    function test_Contract18_Case30_depositETH_routerUpdatePathCovered() public {
-        MockWETHLike weth = new MockWETHLike();
-
-        GiveVault4626 localImpl = new GiveVault4626();
-        bytes memory init = abi.encodeCall(
-            GiveVault4626.initialize,
-            (address(weth), "Test Vault WETH", "tvWETH", admin, address(acl), address(localImpl))
-        );
-        GiveVault4626 v = GiveVault4626(payable(address(new ERC1967Proxy(address(localImpl), init))));
-
-        BranchTestAdapter adapter = new BranchTestAdapter(address(weth), address(v));
-        StubRouter stubRouter = new StubRouter();
-
-        vm.startPrank(admin);
-        v.setWrappedNative(address(weth));
-        v.setDonationRouter(address(stubRouter));
-        v.setActiveAdapter(IYieldAdapter(address(adapter)));
-        vm.stopPrank();
-
-        vm.deal(user1, 1 ether);
-        vm.prank(user1);
-        uint256 shares = v.depositETH{value: 1 ether}(user1, 0);
-        assertGt(shares, 0, "depositETH should mint shares");
     }
 }

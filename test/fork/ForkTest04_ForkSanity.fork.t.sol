@@ -8,11 +8,11 @@ import {DataTypes} from "@aave/core-v3/contracts/protocol/libraries/types/DataTy
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
 
-/// @title ForkTest05_ForkSanity
+/// @title ForkTest04_ForkSanity
 /// @notice Verifies that the fork is connected to Base mainnet and that the
 ///         external contracts we depend on are deployed at expected addresses.
 ///         Run these before the more expensive adapter/vault tests.
-contract ForkTest05_ForkSanity is ForkBase {
+contract ForkTest04_ForkSanity is ForkBase {
     IPool internal pool;
 
     function setUp() public override {

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title   ForkTest07_MultiVaultCampaign
+ * @title   ForkTest06_MultiVaultCampaign
  * @author  GIVE Labs
  * @notice  Fork test for Phase 5.5 GAP-4: single campaign, multiple vaults
  * @dev     Tests vault preference management when multiple vaults support one campaign:
@@ -44,7 +44,7 @@ contract ForkMockCampaignRegistryMultiVault {
     }
 }
 
-contract ForkTest07_MultiVaultCampaign is ForkBase {
+contract ForkTest06_MultiVaultCampaign is ForkBase {
     event VaultReassigned(address indexed vault, bytes32 indexed oldCampaignId, bytes32 indexed newCampaignId);
 
     bytes32 internal constant CAMPAIGN_A = keccak256("campaign_a");

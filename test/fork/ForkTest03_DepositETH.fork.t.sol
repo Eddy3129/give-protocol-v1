@@ -15,11 +15,11 @@ contract ForkMockACLForEth {
     }
 }
 
-/// @title ForkTest04_DepositETH
+/// @title ForkTest03_DepositETH
 /// @notice Covers ETH-native vault flows on Base fork:
 ///         depositETH -> wrap -> invest, withdrawETH -> divest -> unwrap,
 ///         and config/slippage reverts.
-contract ForkTest04_DepositETH is ForkBase {
+contract ForkTest03_DepositETH is ForkBase {
     GiveVault4626 internal vault;
     AaveAdapter internal adapter;
 
