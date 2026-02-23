@@ -4,7 +4,7 @@
 
 .PHONY: help build clean fmt lint \
         test test-unit test-integration test-fork test-fuzz test-invariant \
-        test-full test-fast test-gas test-verbose test-match \
+	test-full test-fast test-gas test-verbose test-match test-fork-one \
         test-fuzz-quick test-invariant-quick \
         coverage coverage-summary coverage-full \
         deploy-local deploy-rpc deploy-verify \
@@ -76,6 +76,14 @@ test-full: ## All tests including fork, fuzz, invariant
 test-fork: ## Fork tests — requires BASE_RPC_URL
 	FOUNDRY_PROFILE=fork forge test \
 	  --match-path "test/fork/**" \
+	  --fork-url $(BASE_RPC_URL) -v
+
+## Usage: make test-fork-one FILE=test/fork/ForkTest06_MultiVaultCampaign.fork.t.sol [TEST=test_name]
+test-fork-one: ## Run one fork test file (optionally one test function)
+	$(if $(FILE),,$(error FILE is required, e.g. FILE=test/fork/ForkTest06_MultiVaultCampaign.fork.t.sol))
+	FOUNDRY_PROFILE=fork forge test \
+	  --match-path "$(FILE)" \
+	  $(if $(TEST),--match-test "$(TEST)",) \
 	  --fork-url $(BASE_RPC_URL) -v
 
 test-fuzz: ## Fuzz tests — 10,000 runs
