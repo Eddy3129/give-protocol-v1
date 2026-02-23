@@ -132,6 +132,23 @@ contract NGORegistry is Initializable, UUPSUpgradeable, PausableUpgradeable {
      */
     event DonationRecorded(address indexed ngo, uint256 amount, uint256 newTotalReceived);
 
+    /**
+     * @notice Emitted when NGO wallet updates a campaign submitter delegate
+     * @param ngo NGO address owning delegate authority
+     * @param delegate Delegate address
+     * @param allowed Whether delegate is allowed to submit campaigns for NGO
+     */
+    event CampaignSubmitterSet(address indexed ngo, address indexed delegate, bool allowed);
+
+    /**
+     * @notice Emitted when NGO manager proposes a delegate compliance change
+     * @param ngo NGO address
+     * @param delegate Delegate address
+     * @param allowed Proposed allow/deny value
+     * @param eta Timelock execution timestamp
+     */
+    event CampaignSubmitterChangeProposed(address indexed ngo, address indexed delegate, bool allowed, uint256 eta);
+
     // ============================================
     // ERRORS
     // ============================================
@@ -162,6 +179,18 @@ contract NGORegistry is Initializable, UUPSUpgradeable, PausableUpgradeable {
 
     /// @notice Timelock delay has not elapsed yet
     error TimelockNotReady();
+
+    /// @notice NGO is not approved for campaign delegate operations
+    error NGONotApprovedForDelegate(address ngo);
+
+    /// @notice Invalid delegate address
+    error InvalidDelegate();
+
+    /// @notice Caller is not the target NGO wallet
+    error NotNGOWallet(address ngo, address caller);
+
+    /// @notice No pending delegate timelock operation
+    error DelegateTimelockMissing(address ngo, address delegate);
 
     // ============================================
     // MODIFIERS
@@ -288,6 +317,50 @@ contract NGORegistry is Initializable, UUPSUpgradeable, PausableUpgradeable {
             info.version,
             info.totalReceived,
             info.isActive
+        );
+    }
+
+    /**
+     * @notice Returns whether submitter can submit campaigns on behalf of NGO
+     * @dev Submitter is valid if NGO is approved and submitter is NGO wallet or authorized delegate
+     * @param ngo NGO address
+     * @param submitter Candidate submitter address
+     * @return True if submitter is authorized for NGO campaign submission
+     */
+    function canSubmitCampaignFor(address ngo, address submitter) external view returns (bool) {
+        GiveTypes.NGORegistryState storage s = _state();
+        if (!s.isApproved[ngo]) return false;
+        return submitter == ngo || s.campaignSubmitters[ngo][submitter];
+    }
+
+    /**
+     * @notice Returns whether delegate is currently authorized for NGO campaign submissions
+     * @param ngo NGO address
+     * @param delegate Delegate address
+     * @return True if delegate is currently authorized
+     */
+    function isCampaignSubmitter(address ngo, address delegate) external view returns (bool) {
+        return _state().campaignSubmitters[ngo][delegate];
+    }
+
+    /**
+     * @notice Returns pending delegate change details
+     * @param ngo NGO address
+     * @param delegate Delegate address
+     * @return hasPending Whether a pending change exists
+     * @return allowed Proposed allow/deny value
+     * @return eta Timelock execution timestamp
+     */
+    function pendingCampaignSubmitterChange(address ngo, address delegate)
+        external
+        view
+        returns (bool hasPending, bool allowed, uint256 eta)
+    {
+        GiveTypes.NGORegistryState storage s = _state();
+        return (
+            s.hasPendingSubmitterChange[ngo][delegate],
+            s.pendingSubmitterAllowed[ngo][delegate],
+            s.pendingSubmitterEta[ngo][delegate]
         );
     }
 
@@ -447,6 +520,69 @@ contract NGORegistry is Initializable, UUPSUpgradeable, PausableUpgradeable {
         s.currentNGOChangeETA = 0;
 
         emit CurrentNGOSet(oldNGO, ngo, 0);
+    }
+
+    /**
+     * @notice NGO wallet directly sets campaign submitter delegate
+     * @dev Self-sovereign NGO path. NGO can add/remove multiple delegates immediately.
+     * @param delegate Delegate address to set
+     * @param allowed Whether delegate is allowed
+     */
+    function setCampaignSubmitter(address delegate, bool allowed) external whenNotPaused {
+        GiveTypes.NGORegistryState storage s = _state();
+        address ngo = msg.sender;
+
+        if (!s.isApproved[ngo]) revert NGONotApprovedForDelegate(ngo);
+        if (delegate == address(0)) revert InvalidDelegate();
+
+        s.campaignSubmitters[ngo][delegate] = allowed;
+        emit CampaignSubmitterSet(ngo, delegate, allowed);
+    }
+
+    /**
+     * @notice NGO manager proposes delegate compliance change with timelock
+     * @dev Compliance path for regulated operations and recovery scenarios.
+     * @param ngo NGO address
+     * @param delegate Delegate address
+     * @param allowed Proposed allow/deny value
+     */
+    function proposeCampaignSubmitterChange(address ngo, address delegate, bool allowed)
+        external
+        onlyRole(NGO_MANAGER_ROLE)
+        whenNotPaused
+    {
+        GiveTypes.NGORegistryState storage s = _state();
+        if (!s.isApproved[ngo]) revert NGONotApprovedForDelegate(ngo);
+        if (delegate == address(0)) revert InvalidDelegate();
+
+        uint256 eta = block.timestamp + TIMELOCK_DELAY;
+        s.pendingSubmitterAllowed[ngo][delegate] = allowed;
+        s.pendingSubmitterEta[ngo][delegate] = eta;
+        s.hasPendingSubmitterChange[ngo][delegate] = true;
+
+        emit CampaignSubmitterChangeProposed(ngo, delegate, allowed, eta);
+    }
+
+    /**
+     * @notice Executes pending NGO manager delegate compliance change after timelock
+     * @param ngo NGO address
+     * @param delegate Delegate address
+     */
+    function executeCampaignSubmitterChange(address ngo, address delegate) external whenNotPaused {
+        GiveTypes.NGORegistryState storage s = _state();
+        if (!s.hasPendingSubmitterChange[ngo][delegate]) revert DelegateTimelockMissing(ngo, delegate);
+
+        uint256 eta = s.pendingSubmitterEta[ngo][delegate];
+        if (block.timestamp < eta) revert TimelockNotReady();
+
+        bool allowed = s.pendingSubmitterAllowed[ngo][delegate];
+        s.campaignSubmitters[ngo][delegate] = allowed;
+
+        s.hasPendingSubmitterChange[ngo][delegate] = false;
+        delete s.pendingSubmitterAllowed[ngo][delegate];
+        delete s.pendingSubmitterEta[ngo][delegate];
+
+        emit CampaignSubmitterSet(ngo, delegate, allowed);
     }
 
     // ============================================

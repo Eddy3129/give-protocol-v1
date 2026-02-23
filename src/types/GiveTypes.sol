@@ -395,6 +395,10 @@ library GiveTypes {
         mapping(address => bool) isApproved; // Quick approval check
         mapping(address => NGOInfo) ngoInfo; // NGO information
         address[] approvedNGOs; // Enumerable list of approved NGOs
+        mapping(address => mapping(address => bool)) campaignSubmitters; // NGO => delegate => allowed
+        mapping(address => mapping(address => bool)) pendingSubmitterAllowed; // NGO => delegate => pending allowed flag
+        mapping(address => mapping(address => uint256)) pendingSubmitterEta; // NGO => delegate => ETA
+        mapping(address => mapping(address => bool)) hasPendingSubmitterChange; // NGO => delegate => pending exists
         address currentNGO; // Current default NGO (if any)
         address pendingCurrentNGO; // Pending default NGO (timelock)
         uint256 currentNGOChangeETA; // Timelock expiry for default NGO change

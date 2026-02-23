@@ -17,6 +17,15 @@ interface IStrategyRegistry {
 }
 
 /**
+ * @notice Interface for NGORegistry contract
+ * @dev Used to validate NGO approval and campaign submission delegation
+ */
+interface INGORegistry {
+    function isApproved(address ngo) external view returns (bool);
+    function canSubmitCampaignFor(address ngo, address submitter) external view returns (bool);
+}
+
+/**
  * @title CampaignRegistry
  * @author GIVE Labs
  * @notice Canonical registry for campaign lifecycle, governance, and supporter stake management
@@ -66,6 +75,12 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
      * @dev Campaigns must use Active or FadingOut strategies (not Deprecated)
      */
     address public strategyRegistry;
+
+    /**
+     * @notice NGO registry for campaign submission authorization
+     * @dev Optional hard gate. When configured, submitter must be authorized for approved NGO payout recipient.
+     */
+    address public ngoRegistry;
 
     /**
      * @notice Role identifier for contract upgrades
@@ -272,6 +287,13 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
      */
     event PayoutsHalted(bytes32 indexed campaignId, bool halted);
 
+    /**
+     * @notice Emitted when NGO registry address is updated
+     * @param previousRegistry Previous NGO registry address
+     * @param newRegistry New NGO registry address
+     */
+    event NGORegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+
     // ============================================
     // ERRORS
     // ============================================
@@ -314,6 +336,15 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
 
     /// @notice Strategy registry not configured
     error StrategyRegistryNotConfigured();
+
+    /// @notice NGO registry not configured
+    error NGORegistryNotConfigured();
+
+    /// @notice Payout recipient NGO is not approved
+    error NGONotApproved(address ngo);
+
+    /// @notice Submitter is not authorized to submit on behalf of payout NGO
+    error UnauthorizedCampaignSubmitter(address ngo, address submitter);
 
     /// @notice Supporter has already voted on this checkpoint
     error AlreadyVoted(address supporter);
@@ -382,6 +413,7 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
 
         _validateCampaignInput(input);
         _fetchStrategy(input.strategyId, input.id);
+        _validateSubmissionAuthorization(input.payoutRecipient, msg.sender);
 
         GiveTypes.CampaignConfig storage cfg = StorageLib.campaign(input.id);
         if (cfg.exists) revert CampaignAlreadyExists(input.id);
@@ -553,6 +585,18 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
     function setStrategyRegistry(address newRegistry) external onlyRole(aclManager.campaignAdminRole()) {
         if (newRegistry == address(0)) revert ZeroAddress();
         strategyRegistry = newRegistry;
+    }
+
+    /**
+     * @notice Updates NGO registry address used for campaign submission authorization
+     * @dev Only callable by CAMPAIGN_ADMIN.
+     * @param newRegistry New NGO registry address
+     */
+    function setNGORegistry(address newRegistry) external onlyRole(aclManager.campaignAdminRole()) {
+        if (newRegistry == address(0)) revert ZeroAddress();
+        address previous = ngoRegistry;
+        ngoRegistry = newRegistry;
+        emit NGORegistryUpdated(previous, newRegistry);
     }
 
     /**
@@ -1070,6 +1114,25 @@ contract CampaignRegistry is Initializable, UUPSUpgradeable {
             strategyCfg = cfg;
         } catch {
             revert InvalidCampaignConfig(campaignId);
+        }
+    }
+
+    /**
+     * @notice Validates submitter authorization for NGO payout recipient
+     * @dev Requires configured NGO registry, approved NGO, and submitter authorization.
+     * @param payoutRecipient NGO payout recipient address
+     * @param submitter Campaign submitter
+     */
+    function _validateSubmissionAuthorization(address payoutRecipient, address submitter) private view {
+        address registry = ngoRegistry;
+        if (registry == address(0)) revert NGORegistryNotConfigured();
+
+        if (!INGORegistry(registry).isApproved(payoutRecipient)) {
+            revert NGONotApproved(payoutRecipient);
+        }
+
+        if (!INGORegistry(registry).canSubmitCampaignFor(payoutRecipient, submitter)) {
+            revert UnauthorizedCampaignSubmitter(payoutRecipient, submitter);
         }
     }
 }
