@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {ACLManager} from "../../src/governance/ACLManager.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
@@ -12,6 +13,7 @@ contract TestContract19_CampaignRegistryBranches is Test {
     ACLManager public aclManager;
     StrategyRegistry public strategyRegistry;
     CampaignRegistry public campaignRegistry;
+    NGORegistry public ngoRegistry;
 
     address public admin;
     address public strategyAdmin;
@@ -57,6 +59,24 @@ contract TestContract19_CampaignRegistryBranches is Test {
 
         campaignRegistry = new CampaignRegistry();
         campaignRegistry.initialize(address(aclManager), address(strategyRegistry));
+
+        ngoRegistry = new NGORegistry();
+        ngoRegistry.initialize(address(aclManager));
+
+        vm.startPrank(admin);
+        aclManager.createRole(ngoRegistry.NGO_MANAGER_ROLE(), admin);
+        aclManager.grantRole(ngoRegistry.NGO_MANAGER_ROLE(), campaignAdmin);
+        vm.stopPrank();
+
+        vm.prank(campaignAdmin);
+        campaignRegistry.setNGORegistry(address(ngoRegistry));
+
+        address ngo = makeAddr("ngo");
+        vm.prank(campaignAdmin);
+        ngoRegistry.addNGO(ngo, "ipfs://ngo-branch", keccak256("kyc-branch"), campaignAdmin);
+
+        vm.prank(ngo);
+        ngoRegistry.setCampaignSubmitter(proposer, true);
 
         vm.prank(strategyAdmin);
         strategyRegistry.registerStrategy(

@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {ACLManager} from "../../src/governance/ACLManager.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
@@ -19,6 +20,7 @@ contract TestContract03_CampaignRegistry is Test {
     CampaignRegistry public campaignRegistry;
     CampaignRegistry public implementation;
     StrategyRegistry public strategyRegistry;
+    NGORegistry public ngoRegistry;
     ACLManager public aclManager;
     ERC1967Proxy public proxy;
 
@@ -138,6 +140,25 @@ contract TestContract03_CampaignRegistry is Test {
         );
         proxy = new ERC1967Proxy(address(implementation), initData);
         campaignRegistry = CampaignRegistry(address(proxy));
+
+        NGORegistry ngoImpl = new NGORegistry();
+        bytes memory ngoInitData = abi.encodeWithSelector(NGORegistry.initialize.selector, address(aclManager));
+        ERC1967Proxy ngoProxy = new ERC1967Proxy(address(ngoImpl), ngoInitData);
+        ngoRegistry = NGORegistry(address(ngoProxy));
+
+        vm.startPrank(superAdmin);
+        aclManager.createRole(ngoRegistry.NGO_MANAGER_ROLE(), superAdmin);
+        aclManager.grantRole(ngoRegistry.NGO_MANAGER_ROLE(), campaignAdmin);
+        vm.stopPrank();
+
+        vm.prank(campaignAdmin);
+        campaignRegistry.setNGORegistry(address(ngoRegistry));
+
+        vm.prank(campaignAdmin);
+        ngoRegistry.addNGO(ngo, "ipfs://ngo-main", keccak256("kyc-main"), campaignAdmin);
+
+        vm.prank(ngo);
+        ngoRegistry.setCampaignSubmitter(proposer, true);
 
         console.log("CampaignRegistry proxy deployed at:", address(campaignRegistry));
         console.log("Campaign admin:", campaignAdmin);
@@ -273,6 +294,50 @@ contract TestContract03_CampaignRegistry is Test {
             })
         );
         vm.stopPrank();
+    }
+
+    /**
+     * @dev Test cannot submit campaign for unapproved NGO payout recipient
+     */
+    function test_Contract03_Case05b_submitCampaignRequiresApprovedNGO() public {
+        address unapprovedNgo = makeAddr("unapprovedNgo");
+
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(CampaignRegistry.NGONotApproved.selector, unapprovedNgo));
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
+            CampaignRegistry.CampaignInput({
+                id: keccak256("UNAPPROVED_NGO_CAMPAIGN"),
+                payoutRecipient: unapprovedNgo,
+                strategyId: STRATEGY_ID,
+                metadataHash: METADATA_HASH,
+                metadataCID: METADATA_CID,
+                targetStake: 100_000e6,
+                minStake: 10_000e6,
+                fundraisingStart: uint64(block.timestamp),
+                fundraisingEnd: uint64(block.timestamp + 30 days)
+            })
+        );
+    }
+
+    /**
+     * @dev Test cannot submit campaign when submitter is not NGO wallet or approved delegate
+     */
+    function test_Contract03_Case05c_submitCampaignRequiresAuthorizedSubmitter() public {
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(CampaignRegistry.UnauthorizedCampaignSubmitter.selector, ngo, user1));
+        campaignRegistry.submitCampaign{value: MIN_DEPOSIT}(
+            CampaignRegistry.CampaignInput({
+                id: keccak256("UNAUTHORIZED_SUBMITTER_CAMPAIGN"),
+                payoutRecipient: ngo,
+                strategyId: STRATEGY_ID,
+                metadataHash: METADATA_HASH,
+                metadataCID: METADATA_CID,
+                targetStake: 100_000e6,
+                minStake: 10_000e6,
+                fundraisingStart: uint64(block.timestamp),
+                fundraisingEnd: uint64(block.timestamp + 30 days)
+            })
+        );
     }
 
     // ============================================

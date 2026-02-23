@@ -94,6 +94,17 @@ contract CRMockStrategyRegistry {
     }
 }
 
+/// @notice Permissive NGO registry mock for submission authorization.
+contract CRMockNGORegistry {
+    function isApproved(address) external pure returns (bool) {
+        return true;
+    }
+
+    function canSubmitCampaignFor(address, address) external pure returns (bool) {
+        return true;
+    }
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /// @title CampaignRegistryHandler
@@ -153,9 +164,11 @@ contract CampaignRegistryHandler is Test {
 
         CRMockACL acl = new CRMockACL();
         CRMockStrategyRegistry stratReg = new CRMockStrategyRegistry(STRATEGY_ID);
+        CRMockNGORegistry ngoReg = new CRMockNGORegistry();
 
         registry = new CampaignRegistry();
         registry.initialize(address(acl), address(stratReg));
+        registry.setNGORegistry(address(ngoReg));
 
         // Submit and approve the campaign once in the constructor so the main
         // lifecycle (stake/checkpoint) is available to the fuzzer immediately.

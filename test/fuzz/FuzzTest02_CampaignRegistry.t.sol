@@ -125,10 +125,21 @@ contract FuzzStrategyRegistry {
     }
 }
 
+contract FuzzNGORegistry {
+    function isApproved(address) external pure returns (bool) {
+        return true;
+    }
+
+    function canSubmitCampaignFor(address, address) external pure returns (bool) {
+        return true;
+    }
+}
+
 contract FuzzTest02_CampaignRegistry is Test {
     CampaignRegistry private registry;
     FuzzACL private acl;
     FuzzStrategyRegistry private strategyRegistry;
+    FuzzNGORegistry private ngoRegistry;
 
     address private admin;
     address private curator;
@@ -146,6 +157,7 @@ contract FuzzTest02_CampaignRegistry is Test {
 
         acl = new FuzzACL();
         strategyRegistry = new FuzzStrategyRegistry();
+        ngoRegistry = new FuzzNGORegistry();
 
         acl.setRole(acl.CAMPAIGN_ADMIN_ROLE(), admin, true);
         acl.setRole(acl.CAMPAIGN_CURATOR_ROLE(), curator, true);
@@ -153,6 +165,9 @@ contract FuzzTest02_CampaignRegistry is Test {
 
         registry = new CampaignRegistry();
         registry.initialize(address(acl), address(strategyRegistry));
+
+        vm.prank(admin);
+        registry.setNGORegistry(address(ngoRegistry));
 
         campaignId = keccak256("fuzz.campaign.registry");
         strategyId = keccak256("fuzz.strategy.registry");

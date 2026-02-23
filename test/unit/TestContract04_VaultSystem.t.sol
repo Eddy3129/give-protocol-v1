@@ -11,6 +11,7 @@ import {CampaignVaultFactory} from "../../src/factory/CampaignVaultFactory.sol";
 import {ACLManager} from "../../src/governance/ACLManager.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
@@ -44,6 +45,7 @@ contract TestContract04_VaultSystem is Test {
     // Registries
     CampaignRegistry public campaignRegistry;
     StrategyRegistry public strategyRegistry;
+    NGORegistry public ngoRegistry;
     PayoutRouter public payoutRouter;
 
     // Factory
@@ -87,6 +89,20 @@ contract TestContract04_VaultSystem is Test {
 
         campaignRegistry = new CampaignRegistry();
         campaignRegistry.initialize(address(aclManager), address(strategyRegistry));
+
+        ngoRegistry = new NGORegistry();
+        ngoRegistry.initialize(address(aclManager));
+
+        vm.startPrank(protocolAdmin);
+        aclManager.createRole(ngoRegistry.NGO_MANAGER_ROLE(), protocolAdmin);
+        aclManager.grantRole(ngoRegistry.NGO_MANAGER_ROLE(), protocolAdmin);
+        vm.stopPrank();
+
+        vm.prank(protocolAdmin);
+        campaignRegistry.setNGORegistry(address(ngoRegistry));
+
+        vm.prank(protocolAdmin);
+        ngoRegistry.addNGO(protocolAdmin, "ipfs://protocol-admin-ngo", keccak256("kyc-protocol-admin"), protocolAdmin);
 
         payoutRouter = new PayoutRouter();
         payoutRouter.initialize(

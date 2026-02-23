@@ -15,6 +15,7 @@ pragma solidity ^0.8.20;
 import {Base02_DeployVaultsAndAdapters} from "../base/Base02_DeployVaultsAndAdapters.t.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 
 contract FuzzTest04_Vault is Base02_DeployVaultsAndAdapters {
     bytes32 private _fuzzStrategyId;
@@ -40,6 +41,17 @@ contract FuzzTest04_Vault is Base02_DeployVaultsAndAdapters {
                 metadataHash: keccak256("fuzz.strategy")
             })
         );
+
+        vm.startPrank(admin);
+        aclManager.createRole(ngoRegistry.NGO_MANAGER_ROLE(), admin);
+        aclManager.grantRole(ngoRegistry.NGO_MANAGER_ROLE(), campaignAdmin);
+        vm.stopPrank();
+
+        vm.prank(campaignAdmin);
+        ngoRegistry.addNGO(ngo1, "ipfs://fuzz04/ngo1", keccak256("fuzz04-ngo1"), campaignAdmin);
+
+        vm.prank(ngo1);
+        ngoRegistry.setCampaignSubmitter(campaignCreator, true);
 
         vm.prank(campaignCreator);
         campaignRegistry.submitCampaign{value: 0.005 ether}(

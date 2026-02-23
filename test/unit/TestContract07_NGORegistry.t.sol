@@ -215,4 +215,64 @@ contract TestContract07_NGORegistry is Test {
         vm.expectRevert();
         ngoRegistry.updateNGO(ngo1, "ipfs://new-cid", keccak256("kyc-v2"));
     }
+
+    function test_Contract07_Case15_ngoWalletCanManageMultipleDelegates() public {
+        address delegate1 = makeAddr("delegate1");
+        address delegate2 = makeAddr("delegate2");
+
+        vm.prank(ngoManager);
+        ngoRegistry.addNGO(ngo1, "ipfs://ngo-1", keccak256("kyc-ngo1"), makeAddr("attestor"));
+
+        vm.prank(ngo1);
+        ngoRegistry.setCampaignSubmitter(delegate1, true);
+        vm.prank(ngo1);
+        ngoRegistry.setCampaignSubmitter(delegate2, true);
+
+        assertTrue(ngoRegistry.isCampaignSubmitter(ngo1, delegate1));
+        assertTrue(ngoRegistry.isCampaignSubmitter(ngo1, delegate2));
+        assertTrue(ngoRegistry.canSubmitCampaignFor(ngo1, ngo1));
+        assertTrue(ngoRegistry.canSubmitCampaignFor(ngo1, delegate1));
+        assertTrue(ngoRegistry.canSubmitCampaignFor(ngo1, delegate2));
+
+        vm.prank(ngo1);
+        ngoRegistry.setCampaignSubmitter(delegate1, false);
+        assertFalse(ngoRegistry.isCampaignSubmitter(ngo1, delegate1));
+        assertFalse(ngoRegistry.canSubmitCampaignFor(ngo1, delegate1));
+    }
+
+    function test_Contract07_Case16_ngoManagerDelegateChangeUsesTimelock() public {
+        address delegate = makeAddr("delegate");
+
+        vm.prank(ngoManager);
+        ngoRegistry.addNGO(ngo1, "ipfs://ngo-1", keccak256("kyc-ngo1"), makeAddr("attestor"));
+
+        vm.prank(ngoManager);
+        ngoRegistry.proposeCampaignSubmitterChange(ngo1, delegate, true);
+
+        (bool hasPending, bool allowed, uint256 eta) = ngoRegistry.pendingCampaignSubmitterChange(ngo1, delegate);
+        assertTrue(hasPending);
+        assertTrue(allowed);
+        assertGt(eta, block.timestamp);
+
+        vm.expectRevert(NGORegistry.TimelockNotReady.selector);
+        ngoRegistry.executeCampaignSubmitterChange(ngo1, delegate);
+
+        vm.warp(block.timestamp + ngoRegistry.TIMELOCK_DELAY() + 1);
+        ngoRegistry.executeCampaignSubmitterChange(ngo1, delegate);
+
+        assertTrue(ngoRegistry.isCampaignSubmitter(ngo1, delegate));
+        assertTrue(ngoRegistry.canSubmitCampaignFor(ngo1, delegate));
+    }
+
+    function test_Contract07_Case17_nonNgoWalletCannotSetDelegate() public {
+        address delegate = makeAddr("delegate");
+        address notNgo = makeAddr("notNgo");
+
+        vm.prank(ngoManager);
+        ngoRegistry.addNGO(ngo1, "ipfs://ngo-1", keccak256("kyc-ngo1"), makeAddr("attestor"));
+
+        vm.prank(notNgo);
+        vm.expectRevert(abi.encodeWithSelector(NGORegistry.NGONotApprovedForDelegate.selector, notNgo));
+        ngoRegistry.setCampaignSubmitter(delegate, true);
+    }
 }
