@@ -143,6 +143,13 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
 
         vm.stopPrank();
 
+        vm.prank(ngo1);
+        ngoRegistry.setCampaignSubmitter(campaignCreator, true);
+        vm.prank(ngo2);
+        ngoRegistry.setCampaignSubmitter(campaignCreator, true);
+        vm.prank(donor1);
+        ngoRegistry.setCampaignSubmitter(campaignCreator, true);
+
         emit log_string("NGOs registered");
 
         // ========================================

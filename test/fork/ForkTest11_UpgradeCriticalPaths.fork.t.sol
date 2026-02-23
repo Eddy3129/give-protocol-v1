@@ -15,27 +15,13 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ForkHelperConfig} from "./ForkHelperConfig.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
-
-contract F11_MockACL {
-    mapping(bytes32 => mapping(address => bool)) internal _roles;
-
-    function setRole(bytes32 role, address account, bool enabled) external {
-        _roles[role][account] = enabled;
-    }
-
-    function hasRole(bytes32 role, address account) external view returns (bool) {
-        return _roles[role][account];
-    }
-}
-
-contract F11_MockCampaignRegistry {
-    function getCampaign(bytes32 id) external pure returns (bytes32, address, bool) {
-        return (id, address(0), false);
-    }
-}
 
 contract PayoutRouterV2Harness is PayoutRouter {
     function version() external pure returns (uint256) {
@@ -52,8 +38,9 @@ contract GiveVault4626V2Harness is GiveVault4626 {
 contract ForkTest11_UpgradeCriticalPaths is ForkBase {
     bytes32 internal constant ROLE_UPGRADER = keccak256("ROLE_UPGRADER");
 
-    F11_MockACL internal acl;
-    F11_MockCampaignRegistry internal campaignRegistry;
+    ACLManager internal acl;
+    StrategyRegistry internal strategyRegistry;
+    CampaignRegistry internal campaignRegistry;
     GiveVault4626 internal vault;
     PayoutRouter internal router;
 
@@ -73,8 +60,15 @@ contract ForkTest11_UpgradeCriticalPaths is ForkBase {
         feeRecipient = makeAddr("f11_fee_recipient");
         protocolTreasury = makeAddr("f11_treasury");
 
-        acl = new F11_MockACL();
-        campaignRegistry = new F11_MockCampaignRegistry();
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        acl = suite.acl;
+        strategyRegistry = suite.strategyRegistry;
+        campaignRegistry = suite.campaignRegistry;
+
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, address(0));
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        vm.stopPrank();
 
         GiveVault4626 vaultImpl = new GiveVault4626();
         vault = GiveVault4626(
@@ -106,7 +100,8 @@ contract ForkTest11_UpgradeCriticalPaths is ForkBase {
         );
         router = PayoutRouter(address(new ERC1967Proxy(address(implementation), initData)));
 
-        acl.setRole(ROLE_UPGRADER, upgrader, true);
+        vm.prank(admin);
+        acl.grantRole(ROLE_UPGRADER, upgrader);
     }
 
     function test_upgrade_requires_role_upgrader_payoutRouter() public requiresFork {

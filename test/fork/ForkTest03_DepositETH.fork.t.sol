@@ -5,15 +5,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
-
-contract ForkMockACLForEth {
-    function hasRole(bytes32, address) external pure returns (bool) {
-        return false;
-    }
-}
 
 /// @title ForkTest03_DepositETH
 /// @notice Covers ETH-native vault flows on Base fork:
@@ -35,7 +30,8 @@ contract ForkTest03_DepositETH is ForkBase {
         admin = makeAddr("eth_vault_admin");
         receiver = makeAddr("eth_receiver");
 
-        ForkMockACLForEth acl = new ForkMockACLForEth();
+        ACLManager acl = new ACLManager();
+        acl.initialize(admin, admin);
 
         vault = new GiveVault4626();
         vm.prank(admin);
@@ -100,7 +96,8 @@ contract ForkTest03_DepositETH is ForkBase {
     }
 
     function test_depositETH_reverts_when_wrappedNative_not_set() public requiresFork {
-        ForkMockACLForEth acl = new ForkMockACLForEth();
+        ACLManager acl = new ACLManager();
+        acl.initialize(admin, admin);
         GiveVault4626 freshVault = new GiveVault4626();
 
         vm.prank(admin);

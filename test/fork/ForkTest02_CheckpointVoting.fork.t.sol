@@ -16,81 +16,25 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ForkHelperConfig} from "./ForkHelperConfig.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 import {GiveErrors} from "../../src/utils/GiveErrors.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
-
-contract ForkMockACLForCheckpoint {
-    mapping(bytes32 => mapping(address => bool)) internal roleMembers;
-
-    bytes32 internal constant ROLE_PROTOCOL_ADMIN = keccak256("ROLE_PROTOCOL_ADMIN");
-    bytes32 internal constant ROLE_STRATEGY_ADMIN = keccak256("ROLE_STRATEGY_ADMIN");
-    bytes32 internal constant ROLE_CAMPAIGN_ADMIN = keccak256("ROLE_CAMPAIGN_ADMIN");
-    bytes32 internal constant ROLE_CAMPAIGN_CREATOR = keccak256("ROLE_CAMPAIGN_CREATOR");
-    bytes32 internal constant ROLE_CAMPAIGN_CURATOR = keccak256("ROLE_CAMPAIGN_CURATOR");
-    bytes32 internal constant ROLE_CHECKPOINT_COUNCIL = keccak256("ROLE_CHECKPOINT_COUNCIL");
-
-    function grantRole(bytes32 role, address account) external {
-        roleMembers[role][account] = true;
-    }
-
-    function hasRole(bytes32 role, address account) external view returns (bool) {
-        return roleMembers[role][account];
-    }
-
-    function protocolAdminRole() external pure returns (bytes32) {
-        return ROLE_PROTOCOL_ADMIN;
-    }
-
-    function strategyAdminRole() external pure returns (bytes32) {
-        return ROLE_STRATEGY_ADMIN;
-    }
-
-    function campaignAdminRole() external pure returns (bytes32) {
-        return ROLE_CAMPAIGN_ADMIN;
-    }
-
-    function campaignCreatorRole() external pure returns (bytes32) {
-        return ROLE_CAMPAIGN_CREATOR;
-    }
-
-    function campaignCuratorRole() external pure returns (bytes32) {
-        return ROLE_CAMPAIGN_CURATOR;
-    }
-
-    function checkpointCouncilRole() external pure returns (bytes32) {
-        return ROLE_CHECKPOINT_COUNCIL;
-    }
-}
-
-contract ForkMockStrategyRegistry {
-    function getStrategy(bytes32 strategyId) external view returns (GiveTypes.StrategyConfig memory cfg) {
-        uint256[50] memory gap;
-        cfg.id = strategyId;
-        cfg.adapter = address(1);
-        cfg.creator = address(this);
-        cfg.metadataHash = keccak256("mock-strategy");
-        cfg.riskTier = keccak256("low");
-        cfg.maxTvl = type(uint256).max;
-        cfg.createdAt = uint64(block.timestamp);
-        cfg.updatedAt = uint64(block.timestamp);
-        cfg.status = GiveTypes.StrategyStatus.Active;
-        cfg.exists = true;
-        cfg.__gap = gap;
-    }
-}
 
 contract ForkTest02_CheckpointVoting is ForkBase {
     bytes32 internal constant CAMPAIGN_ID = keccak256("fork_checkpoint_campaign");
     bytes32 internal constant STRATEGY_ID = keccak256("fork_checkpoint_strategy");
     uint256 internal constant DONOR_DEPOSIT = 100_000e6;
 
-    ForkMockACLForCheckpoint internal acl;
-    ForkMockStrategyRegistry internal strategyRegistry;
+    ACLManager internal acl;
+    StrategyRegistry internal strategyRegistry;
 
     CampaignRegistry internal campaignRegistry;
     PayoutRouter internal payoutRouter;
@@ -101,6 +45,7 @@ contract ForkTest02_CheckpointVoting is ForkBase {
 
     address internal admin;
     address internal proposer;
+    address internal checkpointNgo;
     address internal checkpointCouncil;
     address internal supporter1;
     address internal supporter2;
@@ -117,15 +62,32 @@ contract ForkTest02_CheckpointVoting is ForkBase {
         supporter1 = address(0x1004);
         supporter2 = address(0x1005);
 
-        acl = new ForkMockACLForCheckpoint();
-        strategyRegistry = new ForkMockStrategyRegistry();
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        acl = suite.acl;
+        strategyRegistry = suite.strategyRegistry;
+        campaignRegistry = suite.campaignRegistry;
+        NGORegistry ngoRegistry = suite.ngoRegistry;
 
-        acl.grantRole(acl.campaignAdminRole(), admin);
-        acl.grantRole(acl.campaignCuratorRole(), admin);
-        acl.grantRole(acl.checkpointCouncilRole(), checkpointCouncil);
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, checkpointCouncil);
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        ForkHelperConfig.wireCampaignNgoRegistry(campaignRegistry, ngoRegistry);
+        checkpointNgo = makeAddr("checkpoint_ngo");
+        ForkHelperConfig.addApprovedNgo(
+            ngoRegistry, checkpointNgo, "ipfs://checkpoint-ngo", keccak256("fork02-checkpoint-ngo")
+        );
+        vm.stopPrank();
 
-        campaignRegistry = new CampaignRegistry();
-        campaignRegistry.initialize(address(acl), address(strategyRegistry));
+        vm.prank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID,
+                adapter: address(1),
+                riskTier: keccak256("LOW"),
+                maxTvl: type(uint256).max,
+                metadataHash: keccak256("fork02-strategy")
+            })
+        );
 
         payoutRouter = new PayoutRouter();
         vm.startPrank(admin);
@@ -155,7 +117,7 @@ contract ForkTest02_CheckpointVoting is ForkBase {
 
         uint256 checkpointIndex = _scheduleCheckpoint(9000);
         _openVoting(checkpointIndex);
-        _finalizeAfterVotingWindow(checkpointIndex);
+        _finalizeAfterVotingWindow(checkpointIndex, true, true);
 
         GiveTypes.CampaignConfig memory campaign = campaignRegistry.getCampaign(CAMPAIGN_ID);
         assertTrue(campaign.payoutsHalted, "payouts should be halted after failed checkpoint");
@@ -172,7 +134,7 @@ contract ForkTest02_CheckpointVoting is ForkBase {
 
         uint256 failedIndex = _scheduleCheckpoint(9000);
         _openVoting(failedIndex);
-        _finalizeAfterVotingWindow(failedIndex);
+        _finalizeAfterVotingWindow(failedIndex, true, true);
 
         GiveTypes.CampaignConfig memory afterFail = campaignRegistry.getCampaign(CAMPAIGN_ID);
         assertTrue(afterFail.payoutsHalted, "checkpoint fail should halt payouts");
@@ -185,7 +147,7 @@ contract ForkTest02_CheckpointVoting is ForkBase {
         vm.prank(supporter2);
         campaignRegistry.voteOnCheckpoint(CAMPAIGN_ID, successIndex, true);
 
-        _finalizeAfterVotingWindow(successIndex);
+        _finalizeAfterVotingWindow(successIndex, true, false);
 
         GiveTypes.CampaignConfig memory afterSuccess = campaignRegistry.getCampaign(CAMPAIGN_ID);
         assertFalse(afterSuccess.payoutsHalted, "successful checkpoint should resume payouts");
@@ -210,11 +172,11 @@ contract ForkTest02_CheckpointVoting is ForkBase {
 
     function _submitApproveAndActivateCampaign() internal {
         vm.deal(proposer, 1 ether);
-        uint256 submissionDeposit = campaignRegistry.MIN_SUBMISSION_DEPOSIT();
+        uint256 submissionDeposit = ForkHelperConfig.CAMPAIGN_SUBMISSION_DEPOSIT;
 
         CampaignRegistry.CampaignInput memory input = CampaignRegistry.CampaignInput({
             id: CAMPAIGN_ID,
-            payoutRecipient: makeAddr("checkpoint_ngo"),
+            payoutRecipient: checkpointNgo,
             strategyId: STRATEGY_ID,
             metadataHash: keccak256("checkpoint-campaign"),
             metadataCID: "ipfs://checkpoint-campaign",
@@ -224,7 +186,8 @@ contract ForkTest02_CheckpointVoting is ForkBase {
             fundraisingEnd: uint64(block.timestamp + 60 days)
         });
 
-        vm.prank(proposer);
+        vm.deal(checkpointNgo, 1 ether);
+        vm.prank(checkpointNgo);
         campaignRegistry.submitCampaign{value: submissionDeposit}(input);
 
         vm.startPrank(admin);
@@ -269,9 +232,16 @@ contract ForkTest02_CheckpointVoting is ForkBase {
         campaignRegistry.updateCheckpointStatus(CAMPAIGN_ID, checkpointIndex, GiveTypes.CheckpointStatus.Voting);
     }
 
-    function _finalizeAfterVotingWindow(uint256 checkpointIndex) internal {
+    function _finalizeAfterVotingWindow(uint256 checkpointIndex, bool expectPayoutsHaltedEvent, bool haltedValue)
+        internal
+    {
         (, uint64 windowEnd,,,,) = campaignRegistry.getCheckpoint(CAMPAIGN_ID, checkpointIndex);
         vm.warp(uint256(windowEnd) + 1);
+
+        if (expectPayoutsHaltedEvent) {
+            vm.expectEmit(true, true, false, true);
+            emit CampaignRegistry.PayoutsHalted(CAMPAIGN_ID, haltedValue);
+        }
 
         vm.prank(admin);
         campaignRegistry.finalizeCheckpoint(CAMPAIGN_ID, checkpointIndex);

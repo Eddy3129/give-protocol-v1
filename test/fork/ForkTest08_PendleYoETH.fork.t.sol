@@ -23,41 +23,22 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ForkHelperConfig} from "./ForkHelperConfig.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {PendleAdapter} from "../../src/adapters/kinds/PendleAdapter.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
-// ── Minimal mocks ─────────────────────────────────────────────────────────────
-
-contract ForkMockACL_YoETH {
-    function hasRole(bytes32, address) external pure returns (bool) {
-        return false;
-    }
-}
-
-contract ForkMockCampaignRegistry_YoETH {
-    address public immutable payoutRecipient;
-
-    constructor(address r) {
-        payoutRecipient = r;
-    }
-
-    function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
-        uint256[49] memory gap;
-        cfg.id = id;
-        cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active;
-        cfg.exists = true;
-        cfg.__gap = gap;
-    }
-}
-
 contract ForkTest08_PendleYoETH is ForkBase {
     // ── Constants ─────────────────────────────────────────────────────────────
 
     bytes32 internal constant CAMPAIGN_ID = keccak256("fork.campaign.yoeth");
+    bytes32 internal constant STRATEGY_ID = keccak256("fork08.strategy.pendle.yoeth");
 
     /// 5 WETH per donor (~$15k at $3k WETH — meaningful depth for yoETH market)
     uint256 internal constant DEPOSIT = 5 ether;
@@ -92,8 +73,19 @@ contract ForkTest08_PendleYoETH is ForkBase {
         donors[1] = makeAddr("yoeth_donor1");
         donors[2] = makeAddr("yoeth_donor2");
 
-        ForkMockACL_YoETH acl = new ForkMockACL_YoETH();
-        ForkMockCampaignRegistry_YoETH registry = new ForkMockCampaignRegistry_YoETH(ngo);
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        ACLManager acl = suite.acl;
+        StrategyRegistry strategyRegistry = suite.strategyRegistry;
+        CampaignRegistry registry = suite.campaignRegistry;
+        NGORegistry ngoRegistry = suite.ngoRegistry;
+
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, address(0));
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        ForkHelperConfig.wireCampaignNgoRegistry(registry, ngoRegistry);
+        ForkHelperConfig.addApprovedNgo(ngoRegistry, ngo, "ipfs://fork08/ngo", keccak256("fork08-ngo"));
+        vm.stopPrank();
+        vm.deal(admin, 10 ether);
 
         vault = new GiveVault4626();
         vm.prank(admin);
@@ -101,7 +93,7 @@ contract ForkTest08_PendleYoETH is ForkBase {
 
         // tokenOut_ = yoETH (the SY's redemption token), not WETH
         adapter = new PendleAdapter(
-            keccak256("fork.yoeth.adapter"),
+            STRATEGY_ID,
             ForkAddresses.WETH,
             address(vault),
             ForkAddresses.PENDLE_ROUTER,
@@ -109,6 +101,39 @@ contract ForkTest08_PendleYoETH is ForkBase {
             ForkAddresses.PENDLE_YOETH_PT,
             ForkAddresses.PENDLE_YOETH_UNDERLYING // tokenOut = yoETH
         );
+
+        vm.prank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID,
+                adapter: address(adapter),
+                riskTier: keccak256("MEDIUM"),
+                maxTvl: 2_500 ether,
+                metadataHash: keccak256("ipfs://fork08/pendle-yoeth")
+            })
+        );
+
+        CampaignRegistry.CampaignInput memory campaignInput = CampaignRegistry.CampaignInput({
+            id: CAMPAIGN_ID,
+            payoutRecipient: ngo,
+            strategyId: STRATEGY_ID,
+            metadataHash: keccak256("fork08-campaign"),
+            metadataCID: "ipfs://fork08/campaign",
+            targetStake: ForkHelperConfig.DEFAULT_TARGET_STAKE_USDC,
+            minStake: ForkHelperConfig.DEFAULT_MIN_STAKE_USDC,
+            fundraisingStart: uint64(block.timestamp),
+            fundraisingEnd: 0
+        });
+
+        vm.deal(ngo, 1 ether);
+        vm.prank(ngo);
+        registry.submitCampaign{value: ForkHelperConfig.CAMPAIGN_SUBMISSION_DEPOSIT}(campaignInput);
+        vm.startPrank(admin);
+        registry.approveCampaign(CAMPAIGN_ID, admin);
+        registry.setCampaignStatus(CAMPAIGN_ID, GiveTypes.CampaignStatus.Active);
+        strategyRegistry.registerStrategyVault(STRATEGY_ID, address(vault));
+        registry.setCampaignVault(CAMPAIGN_ID, address(vault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
+        vm.stopPrank();
 
         router = new PayoutRouter();
         vm.startPrank(admin);
@@ -281,29 +306,6 @@ contract ForkTest08_PendleYoETH is ForkBase {
 
 // ── Cross-market: yoUSD + yoETH vaults under one campaign ────────────────────
 
-contract ForkMockACL_CrossPendle {
-    function hasRole(bytes32, address) external pure returns (bool) {
-        return false;
-    }
-}
-
-contract ForkMockCampaignRegistry_CrossPendle {
-    address public immutable payoutRecipient;
-
-    constructor(address r) {
-        payoutRecipient = r;
-    }
-
-    function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
-        uint256[49] memory gap;
-        cfg.id = id;
-        cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active;
-        cfg.exists = true;
-        cfg.__gap = gap;
-    }
-}
-
 /**
  * @title ForkTest12b_PendleCrossMarket
  * @notice yoUSD (USDC) and yoETH (WETH) Pendle vaults running concurrently under one campaign.
@@ -311,6 +313,8 @@ contract ForkMockCampaignRegistry_CrossPendle {
  */
 contract ForkTest08b_PendleCrossMarket is ForkBase {
     bytes32 internal constant CAMPAIGN_ID = keccak256("fork.campaign.cross.pendle");
+    bytes32 internal constant STRATEGY_YOUSD = keccak256("fork08.cross.strategy.yousd");
+    bytes32 internal constant STRATEGY_YOETH = keccak256("fork08.cross.strategy.yoeth");
 
     uint256 internal constant USDC_DEPOSIT = 10_000e6;
     uint256 internal constant WETH_DEPOSIT = 5 ether;
@@ -345,14 +349,25 @@ contract ForkTest08b_PendleCrossMarket is ForkBase {
         usdcDonor = makeAddr("cross_usdc_donor");
         wethDonor = makeAddr("cross_weth_donor");
 
-        ForkMockACL_CrossPendle acl = new ForkMockACL_CrossPendle();
-        ForkMockCampaignRegistry_CrossPendle registry = new ForkMockCampaignRegistry_CrossPendle(ngo);
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        ACLManager acl = suite.acl;
+        StrategyRegistry strategyRegistry = suite.strategyRegistry;
+        CampaignRegistry registry = suite.campaignRegistry;
+        NGORegistry ngoRegistry = suite.ngoRegistry;
+
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, address(0));
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        ForkHelperConfig.wireCampaignNgoRegistry(registry, ngoRegistry);
+        ForkHelperConfig.addApprovedNgo(ngoRegistry, ngo, "ipfs://fork08/cross-ngo", keccak256("fork08-cross-ngo"));
+        vm.stopPrank();
+        vm.deal(admin, 10 ether);
 
         usdcVault = _newVault(ForkAddresses.USDC, "Give PT-yoUSD Vault", "gPTyoUSD", address(acl));
         wethVault = _newVault(ForkAddresses.WETH, "Give PT-yoETH Vault", "gPTyoETH", address(acl));
 
         usdcAdapter = new PendleAdapter(
-            keccak256("cross.yousd"),
+            STRATEGY_YOUSD,
             ForkAddresses.USDC,
             address(usdcVault),
             ForkAddresses.PENDLE_ROUTER,
@@ -362,7 +377,7 @@ contract ForkTest08b_PendleCrossMarket is ForkBase {
         );
 
         wethAdapter = new PendleAdapter(
-            keccak256("cross.yoeth"),
+            STRATEGY_YOETH,
             ForkAddresses.WETH,
             address(wethVault),
             ForkAddresses.PENDLE_ROUTER,
@@ -370,6 +385,51 @@ contract ForkTest08b_PendleCrossMarket is ForkBase {
             ForkAddresses.PENDLE_YOETH_PT,
             ForkAddresses.PENDLE_YOETH_UNDERLYING
         );
+
+        vm.prank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_YOUSD,
+                adapter: address(usdcAdapter),
+                riskTier: keccak256("MEDIUM"),
+                maxTvl: 5_000_000e6,
+                metadataHash: keccak256("ipfs://fork08/cross-yousd")
+            })
+        );
+        vm.prank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_YOETH,
+                adapter: address(wethAdapter),
+                riskTier: keccak256("MEDIUM"),
+                maxTvl: 2_500 ether,
+                metadataHash: keccak256("ipfs://fork08/cross-yoeth")
+            })
+        );
+
+        CampaignRegistry.CampaignInput memory campaignInput = CampaignRegistry.CampaignInput({
+            id: CAMPAIGN_ID,
+            payoutRecipient: ngo,
+            strategyId: STRATEGY_YOUSD,
+            metadataHash: keccak256("fork08-cross-campaign"),
+            metadataCID: "ipfs://fork08/cross-campaign",
+            targetStake: ForkHelperConfig.DEFAULT_TARGET_STAKE_USDC,
+            minStake: ForkHelperConfig.DEFAULT_MIN_STAKE_USDC,
+            fundraisingStart: uint64(block.timestamp),
+            fundraisingEnd: 0
+        });
+
+        vm.deal(ngo, 1 ether);
+        vm.prank(ngo);
+        registry.submitCampaign{value: ForkHelperConfig.CAMPAIGN_SUBMISSION_DEPOSIT}(campaignInput);
+        vm.startPrank(admin);
+        registry.approveCampaign(CAMPAIGN_ID, admin);
+        registry.setCampaignStatus(CAMPAIGN_ID, GiveTypes.CampaignStatus.Active);
+        strategyRegistry.registerStrategyVault(STRATEGY_YOUSD, address(usdcVault));
+        strategyRegistry.registerStrategyVault(STRATEGY_YOETH, address(wethVault));
+        registry.setCampaignVault(CAMPAIGN_ID, address(usdcVault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
+        registry.setCampaignVault(CAMPAIGN_ID, address(wethVault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
+        vm.stopPrank();
 
         router = new PayoutRouter();
         vm.startPrank(admin);

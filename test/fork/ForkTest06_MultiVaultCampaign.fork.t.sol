@@ -15,45 +15,30 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ForkHelperConfig} from "./ForkHelperConfig.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
-contract ForkMockACLForMultiVault {
-    function hasRole(bytes32, address) external pure returns (bool) {
-        return false;
-    }
-}
-
-contract ForkMockCampaignRegistryMultiVault {
-    mapping(bytes32 => GiveTypes.CampaignConfig) internal campaigns;
-
-    function setCampaign(bytes32 campaignId, address payoutRecipient, bool payoutsHalted) external {
-        GiveTypes.CampaignConfig storage cfg = campaigns[campaignId];
-        cfg.id = campaignId;
-        cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active;
-        cfg.payoutsHalted = payoutsHalted;
-        cfg.exists = true;
-    }
-
-    function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
-        return campaigns[id];
-    }
-}
-
 contract ForkTest06_MultiVaultCampaign is ForkBase {
     event VaultReassigned(address indexed vault, bytes32 indexed oldCampaignId, bytes32 indexed newCampaignId);
 
     bytes32 internal constant CAMPAIGN_A = keccak256("campaign_a");
     bytes32 internal constant CAMPAIGN_B = keccak256("campaign_b");
+    bytes32 internal constant STRATEGY_USDC = keccak256("fork06.strategy.aave.usdc");
+    bytes32 internal constant STRATEGY_WETH = keccak256("fork06.strategy.aave.weth");
 
     uint256 internal constant USDC_DEPOSIT = 20_000e6;
     uint256 internal constant WETH_DEPOSIT = 20 ether;
+    CampaignRegistry internal registry;
 
-    ForkMockCampaignRegistryMultiVault internal registry;
+    StrategyRegistry internal strategyRegistry;
     PayoutRouter internal router;
 
     GiveVault4626 internal usdcVault;
@@ -86,10 +71,20 @@ contract ForkTest06_MultiVaultCampaign is ForkBase {
         user1 = makeAddr("multi_user_1");
         user2 = makeAddr("multi_user_2");
 
-        ForkMockACLForMultiVault acl = new ForkMockACLForMultiVault();
-        registry = new ForkMockCampaignRegistryMultiVault();
-        registry.setCampaign(CAMPAIGN_A, ngoA, false);
-        registry.setCampaign(CAMPAIGN_B, ngoB, false);
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        ACLManager acl = suite.acl;
+        strategyRegistry = suite.strategyRegistry;
+        registry = suite.campaignRegistry;
+        NGORegistry ngoRegistry = suite.ngoRegistry;
+
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, address(0));
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        ForkHelperConfig.wireCampaignNgoRegistry(registry, ngoRegistry);
+        ForkHelperConfig.addApprovedNgo(ngoRegistry, ngoA, "ipfs://fork06/ngo-a", keccak256("fork06-ngo-a"));
+        ForkHelperConfig.addApprovedNgo(ngoRegistry, ngoB, "ipfs://fork06/ngo-b", keccak256("fork06-ngo-b"));
+        vm.stopPrank();
+        vm.deal(admin, 10 ether);
 
         router = new PayoutRouter();
         vm.startPrank(admin);
@@ -104,10 +99,40 @@ contract ForkTest06_MultiVaultCampaign is ForkBase {
         wethAdapter = new AaveAdapter(ForkAddresses.WETH, address(wethVault), ForkAddresses.AAVE_POOL, admin);
 
         vm.startPrank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_USDC,
+                adapter: address(usdcAdapter),
+                riskTier: keccak256("LOW"),
+                maxTvl: 10_000_000e6,
+                metadataHash: keccak256("ipfs://fork06/aave-usdc")
+            })
+        );
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_WETH,
+                adapter: address(wethAdapter),
+                riskTier: keccak256("LOW"),
+                maxTvl: 5_000 ether,
+                metadataHash: keccak256("ipfs://fork06/aave-weth")
+            })
+        );
+        vm.stopPrank();
+
+        _submitApproveAndActivateCampaign(CAMPAIGN_A, ngoA, STRATEGY_USDC, "ipfs://fork06/campaign-a");
+        _submitApproveAndActivateCampaign(CAMPAIGN_B, ngoB, STRATEGY_WETH, "ipfs://fork06/campaign-b");
+
+        vm.startPrank(admin);
+        strategyRegistry.registerStrategyVault(STRATEGY_USDC, address(usdcVault));
+        strategyRegistry.registerStrategyVault(STRATEGY_WETH, address(wethVault));
+
         usdcVault.setActiveAdapter(IYieldAdapter(address(usdcAdapter)));
         wethVault.setActiveAdapter(IYieldAdapter(address(wethAdapter)));
         usdcVault.setDonationRouter(address(router));
         wethVault.setDonationRouter(address(router));
+
+        registry.setCampaignVault(CAMPAIGN_A, address(usdcVault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
+        registry.setCampaignVault(CAMPAIGN_A, address(wethVault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
 
         router.registerCampaignVault(address(usdcVault), CAMPAIGN_A);
         router.registerCampaignVault(address(wethVault), CAMPAIGN_A);
@@ -215,5 +240,32 @@ contract ForkTest06_MultiVaultCampaign is ForkBase {
     function _claimAs(address user, address vault, address asset) internal returns (uint256 claimed) {
         vm.prank(user);
         claimed = router.claimYield(vault, asset);
+    }
+
+    function _submitApproveAndActivateCampaign(
+        bytes32 campaignId,
+        address payoutRecipient,
+        bytes32 strategyId,
+        string memory metadataCid
+    ) internal {
+        CampaignRegistry.CampaignInput memory input = CampaignRegistry.CampaignInput({
+            id: campaignId,
+            payoutRecipient: payoutRecipient,
+            strategyId: strategyId,
+            metadataHash: keccak256(bytes(metadataCid)),
+            metadataCID: metadataCid,
+            targetStake: ForkHelperConfig.DEFAULT_TARGET_STAKE_USDC,
+            minStake: ForkHelperConfig.DEFAULT_MIN_STAKE_USDC,
+            fundraisingStart: uint64(block.timestamp),
+            fundraisingEnd: 0
+        });
+
+        vm.deal(payoutRecipient, 1 ether);
+        vm.prank(payoutRecipient);
+        registry.submitCampaign{value: ForkHelperConfig.CAMPAIGN_SUBMISSION_DEPOSIT}(input);
+        vm.prank(admin);
+        registry.approveCampaign(campaignId, admin);
+        vm.prank(admin);
+        registry.setCampaignStatus(campaignId, GiveTypes.CampaignStatus.Active);
     }
 }

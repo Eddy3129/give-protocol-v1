@@ -193,6 +193,9 @@ contract Base01_DeployCore is Test {
 
         emit log_named_address("NGORegistry deployed at", address(ngoRegistry));
 
+        vm.prank(campaignAdmin);
+        campaignRegistry.setNGORegistry(address(ngoRegistry));
+
         // ========================================
         // STEP 8: Deploy PayoutRouter
         // ========================================

@@ -28,41 +28,22 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {ForkBase} from "./ForkBase.t.sol";
 import {ForkAddresses} from "./ForkAddresses.sol";
+import {ForkHelperConfig} from "./ForkHelperConfig.sol";
+import {ACLManager} from "../../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
+import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
+import {NGORegistry} from "../../src/donation/NGORegistry.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {PendleAdapter} from "../../src/adapters/kinds/PendleAdapter.sol";
 import {PayoutRouter} from "../../src/payout/PayoutRouter.sol";
 import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
 
-// ── Minimal mocks ─────────────────────────────────────────────────────────────
-
-contract ForkMockACL_YoUSD {
-    function hasRole(bytes32, address) external pure returns (bool) {
-        return false;
-    }
-}
-
-contract ForkMockCampaignRegistry_YoUSD {
-    address public immutable payoutRecipient;
-
-    constructor(address r) {
-        payoutRecipient = r;
-    }
-
-    function getCampaign(bytes32 id) external view returns (GiveTypes.CampaignConfig memory cfg) {
-        uint256[49] memory gap;
-        cfg.id = id;
-        cfg.payoutRecipient = payoutRecipient;
-        cfg.status = GiveTypes.CampaignStatus.Active;
-        cfg.exists = true;
-        cfg.__gap = gap;
-    }
-}
-
 contract ForkTest07_PendleYoUSD is ForkBase {
     // ── Constants ─────────────────────────────────────────────────────────────
 
     bytes32 internal constant CAMPAIGN_ID = keccak256("fork.campaign.yousd");
+    bytes32 internal constant STRATEGY_ID = keccak256("fork07.strategy.pendle.yousd");
 
     /// 10 000 USDC per donor — sufficient for Pendle AMM depth
     uint256 internal constant DEPOSIT = 10_000e6;
@@ -97,8 +78,19 @@ contract ForkTest07_PendleYoUSD is ForkBase {
         donors[1] = makeAddr("yousd_donor1");
         donors[2] = makeAddr("yousd_donor2");
 
-        ForkMockACL_YoUSD acl = new ForkMockACL_YoUSD();
-        ForkMockCampaignRegistry_YoUSD registry = new ForkMockCampaignRegistry_YoUSD(ngo);
+        ForkHelperConfig.RegistrySuite memory suite = ForkHelperConfig.initAllRegistries(admin);
+        ACLManager acl = suite.acl;
+        StrategyRegistry strategyRegistry = suite.strategyRegistry;
+        CampaignRegistry registry = suite.campaignRegistry;
+        NGORegistry ngoRegistry = suite.ngoRegistry;
+
+        vm.startPrank(admin);
+        ForkHelperConfig.grantCoreProtocolRoles(acl, admin, address(0));
+        ForkHelperConfig.grantNgoRegistryRoles(acl, admin, address(0));
+        ForkHelperConfig.wireCampaignNgoRegistry(registry, ngoRegistry);
+        ForkHelperConfig.addApprovedNgo(ngoRegistry, ngo, "ipfs://fork07/ngo", keccak256("fork07-ngo"));
+        vm.stopPrank();
+        vm.deal(admin, 10 ether);
 
         vault = new GiveVault4626();
         vm.prank(admin);
@@ -106,7 +98,7 @@ contract ForkTest07_PendleYoUSD is ForkBase {
 
         // tokenOut_ = yoUSD (the SY's redemption token), not USDC
         adapter = new PendleAdapter(
-            keccak256("fork.yousd.adapter"),
+            STRATEGY_ID,
             ForkAddresses.USDC,
             address(vault),
             ForkAddresses.PENDLE_ROUTER,
@@ -114,6 +106,39 @@ contract ForkTest07_PendleYoUSD is ForkBase {
             ForkAddresses.PENDLE_YOUSD_PT,
             ForkAddresses.PENDLE_YOUSD_UNDERLYING // tokenOut = yoUSD
         );
+
+        vm.prank(admin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID,
+                adapter: address(adapter),
+                riskTier: keccak256("MEDIUM"),
+                maxTvl: 5_000_000e6,
+                metadataHash: keccak256("ipfs://fork07/pendle-yousd")
+            })
+        );
+
+        CampaignRegistry.CampaignInput memory campaignInput = CampaignRegistry.CampaignInput({
+            id: CAMPAIGN_ID,
+            payoutRecipient: ngo,
+            strategyId: STRATEGY_ID,
+            metadataHash: keccak256("fork07-campaign"),
+            metadataCID: "ipfs://fork07/campaign",
+            targetStake: ForkHelperConfig.DEFAULT_TARGET_STAKE_USDC,
+            minStake: ForkHelperConfig.DEFAULT_MIN_STAKE_USDC,
+            fundraisingStart: uint64(block.timestamp),
+            fundraisingEnd: 0
+        });
+
+        vm.deal(ngo, 1 ether);
+        vm.prank(ngo);
+        registry.submitCampaign{value: ForkHelperConfig.CAMPAIGN_SUBMISSION_DEPOSIT}(campaignInput);
+        vm.startPrank(admin);
+        registry.approveCampaign(CAMPAIGN_ID, admin);
+        registry.setCampaignStatus(CAMPAIGN_ID, GiveTypes.CampaignStatus.Active);
+        strategyRegistry.registerStrategyVault(STRATEGY_ID, address(vault));
+        registry.setCampaignVault(CAMPAIGN_ID, address(vault), ForkHelperConfig.LOCK_PROFILE_STANDARD);
+        vm.stopPrank();
 
         router = new PayoutRouter();
         vm.startPrank(admin);
