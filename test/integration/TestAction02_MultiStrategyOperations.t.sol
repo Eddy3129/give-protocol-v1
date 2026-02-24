@@ -6,7 +6,6 @@ import {GiveTypes} from "../../src/types/GiveTypes.sol";
 import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {MockYieldAdapter} from "../../src/mocks/MockYieldAdapter.sol";
-import {CompoundingAdapter} from "../../src/adapters/kinds/CompoundingAdapter.sol";
 import {StrategyManager} from "../../src/manager/StrategyManager.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -34,7 +33,6 @@ contract TestAction02_MultiStrategyOperations is Base03_DeployComprehensiveEnvir
     // Additional adapters for testing
     MockYieldAdapter public alternativeAdapter;
     MockYieldAdapter public educationAlternativeAdapter;
-    CompoundingAdapter public secondCompoundingAdapter;
 
     bytes32 public alternativeStrategyId;
 
@@ -106,9 +104,6 @@ contract TestAction02_MultiStrategyOperations is Base03_DeployComprehensiveEnvir
 
         alternativeAdapter = new MockYieldAdapter(address(usdc), address(climateVault), address(aclManager));
         educationAlternativeAdapter = new MockYieldAdapter(address(usdc), address(educationVault), address(aclManager));
-
-        secondCompoundingAdapter =
-            new CompoundingAdapter(keccak256("adapter.education.compounding"), address(dai), address(educationVault));
 
         vm.stopPrank();
 
