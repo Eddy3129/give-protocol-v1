@@ -32,218 +32,115 @@ No-loss donation protocol built on ERC-4626 vaults.
 
 ## Update Log (Concise)
 
-## Current Completion Snapshot
+## Current Snapshot (2026-02-24)
 
-1. Strict frontend E2E is complete and passing (`56/56`) via `make vitest`.
-2. Deployment scripts are hardened (broadcaster guards, env validation, canonical factory role grants).
-3. Frontend E2E runtime is strict-only with explicit deployment artifact selection.
-4. `Makefile` command surface is simplified (`make vitest` public, `frontend-e2e` internal override target).
-5. `PendleAdapter` extended with `tokenOut` immutable to support yield-bearing Pendle markets (PT-yoUSD, PT-yoETH) where the SY redemption token differs from the deposit asset.
-6. Fork suite now includes high-value upgrade validation via `ForkTest11_UpgradeCriticalPaths` (vault/router critical paths and adapter non-upgradeability), while avoiding unit-duplicate broad auth matrices.
+- Frontend strict E2E is stable (`56/56`) via `make vitest`.
+- Deployment scripts are hardened (broadcaster guardrails, env checks, canonical role grants).
+- `PendleAdapter` supports `tokenOut` for yield-bearing SY markets (yoUSD/yoETH).
+- Fork suite includes critical upgrade-path checks (`ForkTest11_UpgradeCriticalPaths`).
+- Latest coverage run baseline: **438 tests passed**, no failures (unit+integration coverage profile).
 
-## Completed Work (Phases 0–5)
+## Delivered Recently
 
-The protocol has been fully stabilized, tested, and audited across multiple iterations:
+- Replaced manual `.s.sol` operations flow with Viem + Vitest runtime operations suite.
+- Standardized frontend E2E command surface (`make vitest`; strict runtime only).
+- Closed deployment/runtime assumptions around role-admin chain, artifact selection, and vault activation wiring.
+- Expanded fork coverage for Pendle market variants and critical-path upgrade safety.
 
-1. **Security & Validation**
-   - Slither priority detectors + Semgrep auto pass triaged.
-   - Reentrancy, access control, and flash-loan protections verified.
-   - PayoutRouter uses a scalable pull-based accumulator model for yield distribution.
-2. **Coverage Hardening**
-   - 407 unit+integration tests (plus fork/fuzz/invariant suites) all passing.
-   - Strict coverage mandates met (>85% branches on critical contracts like Vault and Router).
-   - `--ir-minimum` used consistently across coverage to bypass stack-too-deep in OZ initializable.
-3. **Adapter Integrations & Forks**
-   - Live fork validations complete for `AaveAdapter`, `CompoundingAdapterWstETH`, and `PendleAdapter`.
-   - `PendleAdapter` supports both standard markets (`tokenOut == asset`) and yield-bearing markets (`tokenOut != asset`, e.g. yoUSD, yoETH). Constructor takes a 7th `tokenOut_` parameter.
-   - `ForkTest11_PendleYoUSD` and `ForkTest12_PendleYoETH` validate full PT invest/divest/emergency/harvest cycles on Base mainnet against live Pendle V4 Router.
-   - `ForkAddresses.sol` extended with PT-yoUSD and PT-yoETH market, PT, SY, YT, and underlying addresses.
-   - Multi-chain configurations added (Arbitrum, Optimism).
-4. **Viem Frontend Smoke**
-   - Local, RPC, and Fork lifecycle tests passing via `viem-smoke.mjs`.
-
-_For historical details of earlier updates, refer to previous git commits._
+## Historical Log (Condensed)
 
 ### Update O — Strict E2E + Deployment Hardening (Complete)
 
-Recent production-readiness work closed the live strict Vitest blocker and hardened deployment assumptions:
+- Frontend strict E2E stabilized on live simulation (`56/56`).
+- Fixed role-admin chain assumptions, deployment artifact selection, and fresh vault activation wiring.
+- Hardened deployment scripts (`ALLOW_DEFAULT_BROADCAST` guardrails, env checks, canonical factory role grants).
+- Standardized ops surface (`make vitest` public; strict-only runtime path).
 
-1. **Strict E2E Live Pass**
+### Phases 0–5 Summary (Complete)
 
-- Frontend Vitest strict suite now passes end-to-end on BuildBear (`56/56`).
-- Campaign lifecycle, deposit, preference, harvest, payout, redeem, invariant, and revert sections all green.
+- Security baseline established (Slither + Semgrep triage, ACL/reentrancy/flash-loan checks).
+- Pull-based PayoutRouter accumulator model active in production path.
+- Adapter integration coverage expanded (Aave, compounding paths, Pendle standard + yield-bearing markets).
+- Fork validation expanded (live protocol assumptions, upgrade critical paths).
+- Coverage hardening completed for core risk contracts with `--ir-minimum` profile standardization.
 
-2. **Root Cause Closures**
+## Phase 6 — Production Readiness (In Progress)
 
-- Fixed role-chain assumptions (`grantRole` requires role-admin authority).
-- Fixed deployment artifact ambiguity (explicit `DEPLOYMENT_NETWORK`/`DEPLOYMENTS_FILE` pathing).
-- Fixed fresh campaign-vault operationalization (router wiring + vault-bound adapter activation).
-- Corrected access-control expectation for permissionless `harvest` behavior.
+### Done
 
-3. **Deployment Script Hardening**
+- Mainnet deployment runbook execution validated in simulation environments.
+- Viem/Vitest operations suite delivered and running as the operational validation path.
 
-- Added broadcaster preflight checks and `ALLOW_DEFAULT_BROADCAST` guardrails.
-- Added env validation for required addresses and fee bounds.
-- Added canonical role grants for `CampaignVaultFactory` (`ROLE_CAMPAIGN_ADMIN`, `ROLE_STRATEGY_ADMIN`).
+### Open
 
-4. **Ops Ergonomics**
-
-- Frontend E2E is strict-only (non-strict path removed from runtime assertions).
-- `Makefile` now exposes `make vitest` as the primary public frontend E2E command.
-- Internal frontend target renamed to `frontend-e2e` and old `frontend-e2e-rpc-strict` removed.
-- `.env.example` expanded to include strict frontend and deployment requirements.
-
----
-
----
-
-## Phase 6 — Tenderly + Production Readiness (In Progress)
-
-Phase 6 covers everything between "fork smoke passes" and "safe to deploy to mainnet".
-None of this is covered by any prior phase.
-
-### 6.1 — Tenderly Virtual TestNet scenarios (Replaced by 6.7)
-
-_Note: The manual forge script scenarios have been deprecated in favor of an automated Viem/Vitest operations suite (Phase 6.7)._
-
-Collect: trace links, gas evidence, event shapes — needed for release signoff.
-
-### 6.2 — Multi-RPC fallback validation
-
-The smoke test currently skips fallback when only one RPC is provided.
-Needs a second endpoint (`BASE_RPC_URL_FALLBACK`) configured and validated:
-
-- Primary RPC degraded → fallback kicks in transparently
-- Both RPCs down → surfaced error is user-friendly, not a raw viem transport error
-
-### 6.3 — Revert message UX audit
-
-The smoke test confirms revert selectors (`0xb94abeec`) but not human-readable
-messages. The dapp needs to decode and display actionable errors.
-
-Map every revert the user can trigger to a display string:
-
-| Revert                     | User-facing message                       |
-| -------------------------- | ----------------------------------------- |
-| `ERC4626ExceededMaxRedeem` | "Insufficient shares to redeem"           |
-| `InsufficientCash`         | "Vault is rebalancing, try again shortly" |
-| `ExcessiveLoss`            | "Withdrawal paused due to slippage"       |
-| `EnforcedPause`            | "Vault is paused"                         |
-| `GracePeriodExpired`       | "Emergency period ended, contact support" |
-| `ZeroAmount`               | "Amount must be greater than zero"        |
-
-### 6.4 — Mainnet deployment runbook (Done)
-
-The forge scripts have been successfully executed against Tenderly Virtual TestNet and BuildBear, including `--sender` parameter matching to ensure CREATE address consistency between simulation and broadcast.
-
-Post-deploy checklist: verify contracts on Basescan, confirm donationRouter wired, confirm authorizedCaller set.
-
-### 6.5 — Contract verification on Basescan
-
-`VERIFY_CONTRACTS=true` path in `BaseDeployment.verifyContract()` exists but is
-untested. Validate that all proxies and implementations verify correctly:
-
-```bash
-VERIFY_CONTRACTS=true ETHERSCAN_API_KEY=... forge script script/Deploy01_Infrastructure.s.sol \
-  --rpc-url $BASE_RPC_URL --broadcast --verify
-```
-
-### 6.6 (Lower Priority) — GAP-6 adapter fork suites
-
-No dedicated fork suites yet for `GrowthAdapter`, `ClaimableYieldAdapter`,
-`ManualManageAdapter`. Not a blocker — no live Base deployment target for
-realistic fork behavior. Add when adapters have mainnet deployments to fork against.
-
-### 6.7 — Viem + Vitest Operations Suite ✅ Delivered (Strict Runtime)
-
-Forge operations scripts (`.s.sol`) have been deprecated. All protocol operations (Campaign Creation, Vault Deployment, Deposits, Withdrawals, Yield Harvests) are moving to a cohesive TypeScript + Viem + Vitest test suite.
-
-This suite runs live against any configured RPC (Tenderly VTN, BuildBear, Anvil) simulating end-to-end Dapp interactions:
-
-1. **Admin & Setup Flows**
-
-- [x] Read dynamically deployed addresses from `deployments/<network>-latest.json`
-- [x] Confirm Strategy Registry has targeted strategy (e.g. AaveUSDCStrategy)
-
-2. **Campaign Lifecycle Flow**
-
-- [x] Admin: Submit new campaign via `CampaignRegistry.submitCampaign(params)`
-- [x] Admin: Approve the newly submitted campaign via `CampaignRegistry.approveCampaign(id)`
-- [x] Admin: Deploy a new Vault for the campaign via `CampaignVaultFactory.deployCampaignVault()`
-
-3. **User Action & Yield Flow**
-
-- [x] User: Approve USDC spend for the new Vault
-- [x] User: Deposit USDC into the Campaign Vault
-- [x] RPC: Fast-forward time (e.g. 30 days) to simulate yield accrual
-- [x] Vault: Call `harvest()` (or simulate bot executing it) to process accrued yield
-
-4. **Distribution & Withdrawal Flow**
-
-- [x] PayoutRouter: Verify NGO/Campaign share metrics increase properly
-- [x] User: Redeem Vault shares and confirm correct return of principal + zero slippage loss
-
-Validation command (strict):
-
-```bash
-make vitest
-```
-
-Optional explicit override command:
-
-```bash
-make frontend-e2e RPC_URL=... DEPLOYMENT_NETWORK=anvil
-```
-
-**Note:** This suite completely replaces the need for `.s.sol` scripts outside of initial deployment, ensuring maximum compatibility with frontend implementation code.
+- Multi-RPC fallback validation (`BASE_RPC_URL_FALLBACK`) for degraded primary + dual-outage UX.
+- Revert-to-UX mapping finalization (human-readable frontend errors).
+- Basescan verification flow (`VERIFY_CONTRACTS=true`) full-path validation.
 
 ---
 
 ## Pending / Future Improvements (Only Uncovered Items)
 
-### Coverage-Driven Improvements (Update M Status)
+### P0 — Must Close Before Mainnet
 
-#### Next Coverage Targets (Agreed)
+- Validate multi-RPC fallback behavior and user-facing error on dual endpoint outage.
+- Complete Basescan verification path for proxies + implementations (`VERIFY_CONTRACTS=true`).
+- Finalize frontend revert decoding for core selectors (`ERC4626ExceededMaxRedeem`, `InsufficientCash`, `ExcessiveLoss`, `EnforcedPause`, `GracePeriodExpired`, `ZeroAmount`).
 
-- `PayoutRouter` branch coverage target **>=80%** — **achieved at 87.80%**.
-- `GiveVault4626` branch coverage target **75–78%** with optional **80%** stretch — **exceeded at 83.05%**.
-- Update M added focused branch closures; both suites consolidated into single files:
-  - `test/unit/TestContract06_PayoutRouter.t.sol` — 50 cases covering functional correctness + all branch paths (merged from former TC17)
-  - `test/unit/TestContract18_GiveVault4626Branches.t.sol` — 41 cases covering full vault lifecycle + branch paths
+### P1 — Audit / Coverage Follow-ups
 
-#### Completed (High Priority)
+- Continue fork/fuzz closure for `AaveAdapter` and ETH wrapper paths (branch-heavy, fork-gated).
+- Add EmergencyModule branch coverage for:
+  - `EmergencyAlreadyActive`, `EmergencyNotActive`, `NoActiveAdapter`
+  - `clearAdapter: false` retention path
+  - `data.length == 0` default parameter path
+  - Full sequence: Pause → Withdraw(clear=false) → Unpause
 
-- Added dedicated `StorageLib` accessor/revert suite (`test/unit/TestContract20_StorageLib.t.sol`) covering
-  `InvalidVault`, `InvalidAdapter`, `InvalidRisk`, `InvalidStrategy`, `InvalidCampaign`,
-  `InvalidCampaignVault`, and `InvalidRole` branches.
-- Added `CampaignRegistry` branch suite (`test/unit/TestContract19_CampaignRegistryBranches.t.sol`) for
-  stake/checkpoint lifecycle: `recordStakeDeposit`, `requestStakeExit`, `finalizeStakeExit`,
-  `scheduleCheckpoint`, `updateCheckpointStatus`, `voteOnCheckpoint`, `finalizeCheckpoint`.
-- Added explicit UUPS upgrade authorization tests (`test/unit/TestContract21_UUPSUpgradeAuth.t.sol`) for
-  `ROLE_UPGRADER` enforcement across selected upgradeable contracts.
+### P1 — RiskModule Scope Clarity (Audit Note)
 
-#### Completed (Medium Priority)
+`RiskModule` stores a full risk parameter set but only enforces `maxDeposit` at runtime.
+The following parameters are written to diamond storage but have no on-chain enforcement anywhere
+in the current codebase:
 
-- Extended `TestContract07_NGORegistry.t.sol` with negative paths (`NoTimelockPending`, invalid NGO
-  on propose/emergency set, unauthorized pause/unpause/remove/update).
-- Extended `TestContract10_CampaignVaultFactory.t.sol` with deployment fail-leg and zero-address guard tests
-  (`initializeCampaign`, registry/router wiring, implementation guards).
-- Added `GrowthAdapter` edge-case tests in `test/TestContract05_YieldAdapters.t.sol` for
-  `invest(0)`, `setGrowthIndex(<1e18)`, divest cap branch (`normalized > totalDeposits`),
-  and zero-return divest behavior.
-- Expanded `RiskModule` validation matrix in `TestContract12_ModuleLibraries.t.sol` for threshold/LTV,
-  penalty, cap consistency, ID mismatch, and equality-boundary pass cases.
+- `ltvBps` — stored, never read back during any operation
+- `liquidationThresholdBps` — stored, never read back
+- `liquidationPenaltyBps` — stored, never read back
+- `borrowCapBps` / `maxBorrow` — stored, `enforceBorrowLimit` exists but is never called
+- `depositCapBps` — stored, not used by `enforceDepositLimit` (which uses `maxDeposit` instead)
 
-#### Remaining (Fork-Gated but Important)
+**Why this is currently correct:** GIVE Protocol is a pure yield-routing vault — donors deposit,
+yield flows to NGOs, principal stays intact. There is no lending, borrowing, or liquidation in
+the current design. `maxDeposit` (TVL cap) is the only risk parameter that matters today.
 
-- Continue `AaveAdapter` and ETH wrapper branch closure in fork/fuzz suites
-  (slippage/full-withdraw/revert-path behavior) rather than unit-only targets.
+**Audit note:** An auditor reading `ltvBps` and `liquidationThresholdBps` in storage may spend
+time searching for liquidation logic that does not exist. Should be explicitly documented in
+audit scope to avoid false findings.
 
-### Optional Depth Work (Not Blockers for Current Scope)
+**Recommended next step:** either remove unused fields now, or annotate them as
+reserved for lending-adapter integration (`@dev NOTE`) to avoid audit ambiguity.
 
-- Add fork block pinning runbook for strict reproducibility
-- Add operator-facing PT listing runbook in `README.md`
-- Extend reporting around value-accrual assets (wstETH/cbETH) in UI/docs
+### P2 — PT Vault Product Constraints
+
+**Problem:** PT vaults do not handle early withdrawal well. `PendleAdapter.divest()` calls
+`swapExactPtForToken` which sells PT on the secondary AMM at a discount. The current AMM
+spread on PT-yoUSD is ~6.4%, which exceeds the vault's `maxLossBps` cap (max 5%), causing
+every early `redeem` to revert with `ExcessiveLoss`. Additionally, `swapExactPtForToken`
+reverts entirely post-maturity — the correct path after expiry is `exitPostExpToToken`, which
+the adapter does not expose. In practice, early redemption is blocked by slippage and
+post-maturity redemption requires admin intervention via `emergencyWithdrawFromAdapter`.
+
+Furthermore, `harvest()` on `PendleAdapter` permanently returns `(0, 0)` since PT yield is
+embedded in the PT price discount rather than streaming interest. This means `recordYield` is
+never called, the per-share accumulator never advances, and no donations ever reach the NGO
+from a PT vault during its lifetime — only at maturity when the discount is realised.
+
+**Proposed path:**
+
+1. Add maturity lock for `withdraw`/`redeem` pre-expiry.
+2. Add post-maturity redemption path using `exitPostExpToToken`.
+3. Add one-time maturity harvest accounting path for realised PT discount.
+
+Until implemented, treat PT vaults as maturity-locked products in operator/user communications.
 
 ---
 
