@@ -6,9 +6,21 @@ Users stake assets → Yield flows to charities → Principal remains safe.
 
 ---
 
+## Stack
+
+- **Solidity** `0.8.34`, EVM target: `prague`
+- **Foundry** — build, test, deploy, coverage
+- **OpenZeppelin v5** — UUPS, ERC-4626, AccessControl
+- **UUPS proxies** — all core and vault contracts
+- **Diamond Storage** — collision-safe upgradeable state
+- **Viem v2 + Vitest v4** — frontend E2E and smoke tests
+- **Target mainnet:** Base
+
+---
+
 ## How It Works
 
-1. **Donor deposits** USDC into a campaign vault
+1. **Donor deposits** Assets into a campaign vault
 2. **Vault invests** yield into DeFi protocols (Aave, Pendle, wstETH)
 3. **Yield harvested** by vault → recorded in PayoutRouter
 4. **Campaigns and NGOs claim** their yield share on-demand (pull model)
@@ -74,9 +86,69 @@ graph TD
 
 ---
 
+## Integration Flow
+
+End-to-end sequence from campaign setup through yield payout. Shows every cross-contract call in the happy path.
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant NGO
+    participant Factory as CampaignVaultFactory
+    participant CR as CampaignRegistry
+    participant SR as StrategyRegistry
+    participant PR as PayoutRouter
+    participant Vault as CampaignVault4626
+    participant Adapter as IYieldAdapter
+    participant User
+    participant Campaign as campaign payoutRecipient
+
+    Note over Admin, NGO: Phase 1 — Setup
+    Admin->>NGO: addNGO(ngo, metadataCid, kycHash, attestor)
+    Admin->>SR: registerStrategy(StrategyInput)
+    NGO->>CR: submitCampaign(CampaignInput)
+    Admin->>CR: approveCampaign(campaignId, curator)
+    Admin->>Factory: deployCampaignVault(DeployParams)
+    Factory->>Vault: initialize + initializeCampaign
+    Factory->>CR: setCampaignVault(campaignId, vault, lockProfile)
+    Factory->>PR: registerCampaignVault(vault, campaignId)
+
+    Note over User, Vault: Phase 2 — Deposit
+    User->>Vault: deposit(assets, receiver)
+    Vault->>PR: updateUserShares(user, newShares)
+    Vault->>Adapter: invest(excessCash)
+
+    Note over User, PR: Phase 3 — Yield Preference
+    User->>PR: setVaultPreference(vault, beneficiary, allocationPct)
+
+    Note over Vault, PR: Phase 4 — Harvest
+    Vault->>Adapter: harvest()
+    Vault->>PR: recordYield(asset, totalYield)
+    PR->>PR: accumulatedYieldPerShare += deltaPerShare
+
+    Note over User, Campaign: Phase 5 — Claim
+    User->>PR: claimYield(vault, asset)
+    PR->>PR: protocolAmount = yield * feeBps / 10000
+    PR->>PR: campaignAmount = netYield * allocationPct / 100
+    PR->>Campaign: transfer(campaignAmount)
+    PR->>User: transfer(beneficiaryAmount)
+
+    Note over User, Vault: Phase 6 — Withdraw
+    User->>Vault: redeem(shares, receiver, owner)
+    Vault->>Adapter: divest(shortfall)
+    Vault->>PR: updateUserShares(user, 0)
+    Vault-->>User: principal returned
+```
+
+---
+
 ## Contract Inventory
 
-### Core (Layer 1)
+Each layer below includes a contract table followed by individual component flows showing exact function calls.
+
+---
+
+### Layer 1 — Protocol Core
 
 | Contract           | Type | Purpose                                                      |
 | ------------------ | ---- | ------------------------------------------------------------ |
@@ -87,16 +159,496 @@ graph TD
 | `NGORegistry`      | UUPS | Verified NGO registry with governance timelock               |
 | `PayoutRouter`     | UUPS | Pull-based yield accumulator with fee timelock management    |
 
-### Vaults (Layer 2)
+#### ACLManager
+
+Centralized role registry for the entire protocol. All contracts read roles from here; no contract uses standalone `Ownable`. Role admin transfers use a two-step propose/accept pattern to prevent accidental privilege loss.
+
+```mermaid
+sequenceDiagram
+    participant SuperAdmin
+    participant ACL as ACLManager
+    participant ProtocolContract
+
+    Note over SuperAdmin, ACL: Role Setup
+    SuperAdmin->>ACL: createRole(roleId, adminAddress)
+    SuperAdmin->>ACL: grantRole(roleId, account)
+
+    Note over SuperAdmin, ACL: Two-Step Admin Transfer
+    SuperAdmin->>ACL: proposeRoleAdmin(roleId, newAdmin)
+    newAdmin->>ACL: acceptRoleAdmin(roleId)
+
+    Note over ProtocolContract, ACL: Runtime Role Check
+    ProtocolContract->>ACL: hasRole(roleId, account)
+    ACL-->>ProtocolContract: bool
+```
+
+**Key roles:**
+
+```
+ROLE_SUPER_ADMIN          Root role, grants all others
+ROLE_UPGRADER             Authorize UUPS upgrades
+ROLE_PROTOCOL_ADMIN       Fees, treasury, protocol parameters
+ROLE_STRATEGY_ADMIN       Register and update strategies
+ROLE_CAMPAIGN_ADMIN       Approve and reject campaigns
+ROLE_CAMPAIGN_CURATOR     Manage campaign stake escrow
+ROLE_CHECKPOINT_COUNCIL   Resolve checkpoint status transitions
+```
+
+Source: `src/governance/ACLManager.sol`
+
+#### UUPS Upgrade Flow
+
+All upgradeable contracts use the same pattern: `ROLE_UPGRADER` is checked via `ACLManager` inside `_authorizeUpgrade`, then the OZ UUPS proxy routes to the new implementation. Adapters are **not** upgradeable — they are immutably bound to a vault at deploy time.
+
+```mermaid
+sequenceDiagram
+    participant Upgrader as ROLE_UPGRADER holder
+    participant Proxy as ERC1967Proxy
+    participant OldImpl as Current Implementation
+    participant ACL as ACLManager
+
+    Note over Upgrader, Proxy: Authorized upgrade
+    Upgrader->>Proxy: upgradeToAndCall(newImpl, "")
+    Proxy->>OldImpl: _authorizeUpgrade(newImpl)
+    OldImpl->>ACL: hasRole(ROLE_UPGRADER, msg.sender)
+    ACL-->>OldImpl: true
+    OldImpl-->>Proxy: authorized
+    Proxy->>Proxy: set ERC1967 implementation slot to newImpl
+
+    Note over Upgrader, Proxy: Unauthorized attempt
+    Attacker->>Proxy: upgradeToAndCall(newImpl, "")
+    Proxy->>OldImpl: _authorizeUpgrade(newImpl)
+    OldImpl->>ACL: hasRole(ROLE_UPGRADER, attacker)
+    ACL-->>OldImpl: false
+    OldImpl-->>Proxy: revert UnauthorizedRole
+```
+
+Source: `_authorizeUpgrade` in each contract above
+
+#### NGORegistry
+
+Verified registry of approved NGOs. Each NGO entry holds KYC metadata, donation history, and a delegate allowlist for campaign submission. `currentNGO` changes use a timelock governed by `ROLE_PROTOCOL_ADMIN`; `emergencySetCurrentNGO` bypasses the timelock for incident response.
+
+```mermaid
+sequenceDiagram
+    participant Admin as ROLE_PROTOCOL_ADMIN
+    participant NGO as NGO address
+    participant NGOR as NGORegistry
+    participant CampaignReg as CampaignRegistry
+
+    Note over Admin, NGOR: NGO Onboarding
+    Admin->>NGOR: addNGO(ngo, metadataCid, kycHash, attestor)
+
+    Note over NGO, NGOR: Delegate Management
+    NGO->>NGOR: setCampaignSubmitter(delegate, allowed)
+    Note over NGO, NGOR: Or timelocked path
+    NGO->>NGOR: proposeCampaignSubmitterChange(ngo, delegate, allowed)
+    NGO->>NGOR: executeCampaignSubmitterChange(ngo, delegate)
+
+    Note over CampaignReg, NGOR: Authorization Check
+    CampaignReg->>NGOR: canSubmitCampaignFor(ngo, submitter)
+    NGOR-->>CampaignReg: bool
+
+    Note over Admin, NGOR: Timelocked NGO Change
+    Admin->>NGOR: proposeCurrentNGO(ngo)
+    Admin->>NGOR: executeCurrentNGOChange()
+    Note over Admin, NGOR: OR emergency bypass
+    Admin->>NGOR: emergencySetCurrentNGO(ngo)
+```
+
+Source: `src/donation/NGORegistry.sol`
+
+#### StrategyRegistry
+
+Lifecycle registry for yield strategies. A strategy groups an adapter type, target asset, and metadata hash for off-chain validation. Vaults only interact with strategies in `Active` or `FadingOut` status.
+
+```mermaid
+sequenceDiagram
+    participant StratAdmin as ROLE_STRATEGY_ADMIN
+    participant SR as StrategyRegistry
+    participant Factory as CampaignVaultFactory
+
+    Note over StratAdmin, SR: Strategy Lifecycle
+    StratAdmin->>SR: registerStrategy(StrategyInput)
+    Note over SR: status = Active
+    StratAdmin->>SR: setStrategyStatus(strategyId, FadingOut)
+    StratAdmin->>SR: setStrategyStatus(strategyId, Deprecated)
+
+    Note over StratAdmin, SR: Vault Association
+    StratAdmin->>SR: registerStrategyVault(strategyId, vaultAddress)
+    StratAdmin->>SR: unregisterStrategyVault(strategyId, vaultAddress)
+
+    Note over Factory, SR: Deployment Validation
+    Factory->>SR: getStrategy(strategyId)
+    SR-->>Factory: StrategyConfig
+```
+
+```
+Active → FadingOut → Deprecated
+```
+
+Source: `src/registry/StrategyRegistry.sol`
+
+#### CampaignRegistry
+
+Manages the full campaign lifecycle: submission, approval, checkpoint governance, and supporter stake escrow. Payouts via `PayoutRouter` are halted when a checkpoint fails and resume only after council resolution.
+
+```mermaid
+sequenceDiagram
+    participant NGO
+    participant CampaignAdmin as ROLE_CAMPAIGN_ADMIN
+    participant CR as CampaignRegistry
+    participant Supporter
+    participant Council as ROLE_CHECKPOINT_COUNCIL
+
+    Note over NGO, CR: Campaign Submission
+    NGO->>CR: submitCampaign(CampaignInput) + 0.005 ETH deposit
+
+    Note over CampaignAdmin, CR: Approval
+    CampaignAdmin->>CR: approveCampaign(campaignId, curator)
+    Note over CampaignAdmin, CR: OR
+    CampaignAdmin->>CR: rejectCampaign(campaignId, reason)
+
+    Note over Supporter, CR: Stake Escrow
+    Supporter->>CR: recordStakeDeposit(campaignId, supporter, amount)
+    Supporter->>CR: requestStakeExit(campaignId, supporter, amount)
+    Supporter->>CR: finalizeStakeExit(campaignId, supporter, amount)
+
+    Note over CampaignAdmin, CR: Checkpoint Governance
+    CampaignAdmin->>CR: scheduleCheckpoint(campaignId, CheckpointInput)
+    Supporter->>CR: voteOnCheckpoint(campaignId, index, support)
+    Council->>CR: updateCheckpointStatus(campaignId, index, newStatus)
+    Council->>CR: finalizeCheckpoint(campaignId, index)
+
+    Note over CampaignAdmin, CR: Vault Binding
+    CampaignAdmin->>CR: setCampaignVault(campaignId, vault, lockProfile)
+    CampaignAdmin->>CR: setPayoutRecipient(campaignId, recipient)
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Submitted: submitCampaign()
+    Submitted --> Active: approveCampaign()
+    Submitted --> Rejected: rejectCampaign()
+    Active --> Successful: target stake reached
+    Active --> Failed: deadline passed
+    Active --> Checkpoints: milestones scheduled
+    Checkpoints --> Active: checkpoint passed
+    Checkpoints --> Paused: checkpoint failed
+    Paused --> Active: council resolves
+    Successful --> Completed: finalPayout()
+```
+
+Source: `src/registry/CampaignRegistry.sol`
+
+#### GiveProtocolCore
+
+Thin orchestration layer. Delegates configuration writes to six stateless module libraries. Carries no business logic — all state changes are executed by the modules through `StorageLib` into diamond storage.
+
+```mermaid
+sequenceDiagram
+    participant Admin as ROLE_PROTOCOL_ADMIN / VAULT_MANAGER
+    participant Core as GiveProtocolCore
+    participant Module as Module Library
+    participant DS as Diamond Storage
+
+    Note over Admin, Core: Vault Configuration
+    Admin->>Core: configureVault(vaultId, VaultConfigInput)
+    Core->>Module: VaultModule.configure(vaultId, cfg)
+    Module->>DS: StorageLib.vault(vaultId) — write
+
+    Note over Admin, Core: Adapter Configuration
+    Admin->>Core: configureAdapter(adapterId, AdapterConfigInput)
+    Core->>Module: AdapterModule.configure(adapterId, cfg)
+    Module->>DS: StorageLib.adapter(adapterId) — write
+
+    Note over Admin, Core: Risk Profile
+    Admin->>Core: configureRisk(riskId, RiskConfigInput)
+    Core->>Module: RiskModule.configure(riskId, cfg)
+    Module->>DS: StorageLib.risk(riskId) — write
+
+    Note over Admin, Core: Emergency Trigger
+    Admin->>Core: triggerEmergency(vaultId, action, data)
+    Core->>Module: EmergencyModule.execute(vaultId, action, data)
+    Module->>DS: StorageLib.vault(vaultId) — read + write
+```
+
+Source: `src/core/GiveProtocolCore.sol`
+
+#### PayoutRouter
+
+Pull-based yield distribution hub. Uses a per-share accumulator model: when `recordYield` is called, `accumulatedYieldPerShare` advances by `deltaPerShare`. Each user's claimable yield is `(accumulatedYieldPerShare - userYieldDebt) * userShares`, computed in O(1) at claim time with no loops over recipients.
+
+```mermaid
+sequenceDiagram
+    participant Vault as CampaignVault4626
+    participant PR as PayoutRouter
+    participant User
+    participant NGO
+
+    Note over Vault, PR: Yield Recording (from harvest())
+    Vault->>PR: recordYield(asset, totalYield)
+    PR->>PR: deltaPerShare = totalYield / totalShares
+    PR->>PR: accumulatedYieldPerShare += deltaPerShare
+
+    Note over User, PR: User Preference
+    User->>PR: setVaultPreference(vault, beneficiary, allocationPct)
+
+    Note over User, PR: Yield Claim
+    User->>PR: claimYield(vault, asset)
+    PR->>PR: _accruePending() — userYield = (accumulator - debt) * shares
+    PR->>PR: _calculateAllocations() — split to protocol / campaign / NGO
+    PR->>PR: _executeAllocationPayouts() — transfer each share
+    PR-->>NGO: NGO allocation transferred
+```
+
+**Three-way yield split:**
+
+```mermaid
+sequenceDiagram
+    participant PR as PayoutRouter
+    participant Treasury as protocolTreasury
+    participant Campaign as campaign payoutRecipient
+    participant Beneficiary as user beneficiary
+
+    Note over PR: gross yield = (accumulator - debt) * shares
+    PR->>PR: protocolAmount = grossYield * feeBps / 10000
+    PR->>PR: netYield = grossYield - protocolAmount
+    PR->>PR: campaignAmount = netYield * allocationPct / 100
+    PR->>PR: beneficiaryAmount = netYield - campaignAmount
+    PR->>Treasury: transfer(protocolAmount)
+    PR->>Campaign: transfer(campaignAmount)
+    PR->>Beneficiary: transfer(beneficiaryAmount)
+    Note over PR: Example: 100 yield, 5% fee, 75% to campaign
+    Note over PR: 5 to treasury, 71 to campaign, 24 to beneficiary
+```
+
+| `allocationPercentage` | Campaign share | Beneficiary share | Beneficiary required |
+| ---------------------- | -------------- | ----------------- | -------------------- |
+| `100` (default)        | 100% of net    | 0%                | No                   |
+| `75`                   | 75% of net     | 25% of net        | Yes                  |
+| `50`                   | 50% of net     | 50% of net        | Yes                  |
+
+**Fee timelock:**
+
+```mermaid
+sequenceDiagram
+    participant Admin as ROLE_PROTOCOL_ADMIN
+    participant PR as PayoutRouter
+
+    Note over Admin, PR: Fee Increase (timelocked 7 days)
+    Admin->>PR: proposeFeeChange(newRecipient, newFeeBps)
+    Admin->>PR: executeFeeChange(nonce)
+
+    Note over Admin, PR: Fee Decrease (instant)
+    Admin->>PR: proposeFeeChange(newRecipient, lowerFeeBps)
+    PR->>PR: execute immediately
+
+    Note over Admin, PR: Cancel
+    Admin->>PR: cancelFeeChange(nonce)
+```
+
+Source: `src/payout/PayoutRouter.sol`
+
+---
+
+### Layer 2 — Vaults
 
 | Contract               | Type   | Purpose                                                          |
 | ---------------------- | ------ | ---------------------------------------------------------------- |
 | `GiveVault4626`        | UUPS   | Base ERC-4626 vault with yield harvesting and emergency controls |
 | `CampaignVault4626`    | UUPS   | Campaign-specific vault with fundraising limits                  |
-| `CampaignVaultFactory` | Normal | Deploys `CampaignVault4626` as UUPS proxies                      |
-| `StrategyManager`      | Normal | LTV, penalty, and cap parameter management                       |
+| `CampaignVaultFactory` | Normal | Deploys `CampaignVault4626` as UUPS proxies via CREATE2          |
+| `StrategyManager`      | Normal | Per-vault adapter controller with rebalancing                    |
 
-### Adapters (Layer 3)
+#### CampaignVaultFactory
+
+Deploys `CampaignVault4626` instances as UUPS proxies using CREATE2, making vault addresses deterministic from `(campaignId, strategyId, lockProfile)`. Wires the vault to `CampaignRegistry` and `PayoutRouter` at deploy time.
+
+```mermaid
+sequenceDiagram
+    participant Admin as ROLE_CAMPAIGN_ADMIN
+    participant Factory as CampaignVaultFactory
+    participant Proxy as CampaignVault4626 (new)
+    participant CR as CampaignRegistry
+    participant PR as PayoutRouter
+
+    Note over Admin, Factory: Optional — predict address before deploy
+    Admin->>Factory: predictVaultAddress(DeployParams)
+    Factory-->>Admin: deterministic address
+
+    Note over Admin, Factory: Deploy
+    Admin->>Factory: deployCampaignVault(DeployParams)
+    Factory->>Proxy: deploy via CREATE2 (ERC1967Proxy)
+    Factory->>Proxy: initialize(asset, name, symbol, admin, acl, impl, factory)
+    Factory->>Proxy: initializeCampaign(campaignId, strategyId, lockProfile)
+    Factory->>CR: setCampaignVault(campaignId, vault, lockProfile)
+    Factory->>PR: registerCampaignVault(vault, campaignId)
+    Factory-->>Admin: vault address
+```
+
+Source: `src/factory/CampaignVaultFactory.sol`
+
+#### GiveVault4626 / CampaignVault4626
+
+`GiveVault4626` is the base ERC-4626 vault. It extends the standard with a cash buffer (percentage held liquid), a bound yield adapter, emergency controls, and a harvest function that pushes accrued yield to `PayoutRouter`. `CampaignVault4626` extends it with campaign metadata (`campaignId`, `strategyId`, `lockProfile`).
+
+**Deposit / Withdraw:**
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Vault as CampaignVault4626
+    participant Adapter as IYieldAdapter
+    participant PR as PayoutRouter
+
+    Note over User, Vault: Deposit
+    User->>Vault: deposit(assets, receiver)
+    Vault->>Vault: _deposit() — mint shares
+    Vault->>PR: updateUserShares(user, newShares)
+    Vault->>Vault: _investExcessCash()
+    Vault->>Adapter: invest(amount)
+
+    Note over User, Vault: Withdraw / Redeem
+    User->>Vault: redeem(shares, receiver, owner)
+    Vault->>Vault: _ensureSufficientCash(needed)
+    Vault->>Adapter: divest(shortfall) if cash insufficient
+    Vault->>Vault: _withdraw() — burn shares, transfer assets
+    Vault->>PR: updateUserShares(user, newShares)
+```
+
+**Harvest:**
+
+```mermaid
+sequenceDiagram
+    participant Bot
+    participant Vault as GiveVault4626
+    participant Adapter as IYieldAdapter
+    participant PR as PayoutRouter
+
+    Bot->>Vault: harvest()
+    Vault->>Adapter: harvest() — collect pending rewards
+    Vault->>Vault: compute profit since last harvest
+    Vault->>PR: recordYield(asset, totalYield)
+    PR->>PR: advance accumulatedYieldPerShare
+    Vault-->>Bot: (profit, loss)
+```
+
+**ETH wrapper (WETH vaults):**
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Vault as GiveVault4626
+
+    User->>Vault: depositETH(receiver, minShares) payable
+    Vault->>Vault: wrap ETH to WETH internally
+    Vault->>Vault: standard deposit flow
+    Vault-->>User: shares
+
+    User->>Vault: redeemETH(shares, receiver, owner, minAssets)
+    Vault->>Vault: standard redeem flow
+    Vault->>Vault: unwrap WETH to ETH
+    Vault-->>User: ETH
+```
+
+Source: `src/vault/GiveVault4626.sol`, `src/vault/CampaignVault4626.sol`
+
+#### StrategyManager
+
+Per-vault controller for adapter lifecycle and operational parameters. Maintains an approved adapter list (max 10), handles rebalancing by comparing `totalAssets()` across adapters (TVL heuristic, not APY), and proxies emergency commands to the vault.
+
+**Adapter management and rebalancing:**
+
+```mermaid
+sequenceDiagram
+    participant Admin as vault admin
+    participant SM as StrategyManager
+    participant Vault as CampaignVault4626
+
+    Note over Admin, SM: Adapter Configuration
+    Admin->>SM: setAdapterApproval(adapter, true)
+    Admin->>SM: setActiveAdapter(adapterAddress)
+    SM->>Vault: setActiveAdapter(IYieldAdapter)
+
+    Note over Admin, SM: Parameter Tuning
+    Admin->>SM: updateVaultParameters(cashBufferBps, slippageBps, maxLossBps)
+    SM->>Vault: setCashBufferBps(bps)
+    SM->>Vault: setSlippageBps(bps)
+    SM->>Vault: setMaxLossBps(bps)
+
+    Note over SM, Vault: Rebalance
+    Admin->>SM: rebalance()
+    SM->>SM: _findBestAdapter() — compare totalAssets()
+    SM->>Vault: setActiveAdapter(bestAdapter)
+```
+
+**Emergency proxy:**
+
+```mermaid
+sequenceDiagram
+    participant Admin as vault admin
+    participant SM as StrategyManager
+    participant Vault as CampaignVault4626
+    participant Adapter
+
+    Admin->>SM: activateEmergencyMode()
+    SM->>Vault: emergencyPause()
+    Vault->>Adapter: emergencyWithdrawFromAdapter()
+
+    Admin->>SM: emergencyWithdraw()
+    SM->>Vault: emergencyWithdrawFromAdapter()
+    SM-->>Admin: withdrawn amount
+
+    Admin->>SM: deactivateEmergencyMode()
+    SM->>Vault: resumeFromEmergency()
+```
+
+Source: `src/manager/StrategyManager.sol`
+
+#### EmergencyModule
+
+Last line of defense when a breach or exploit is suspected. Called via `GiveProtocolCore.triggerEmergency()`. Three actions are available: `Pause`, `Withdraw`, and `Resume`. When `Withdraw` is executed, all funds are pulled from the adapter back into the vault. Users can still redeem normally within a 24-hour grace period; after expiry, `emergencyWithdrawUser` handles pro-rata returns.
+
+```mermaid
+sequenceDiagram
+    participant Admin as ROLE_PROTOCOL_ADMIN
+    participant Core as GiveProtocolCore
+    participant EM as EmergencyModule
+    participant Vault as GiveVault4626
+    participant Adapter as IYieldAdapter
+    participant User
+
+    Note over Admin, Core: Step 1 — Pause
+    Admin->>Core: triggerEmergency(vaultId, Pause, "")
+    Core->>EM: execute(vaultId, Pause, "")
+    EM->>Vault: emergencyPause()
+    Note over Vault: deposits/withdraws paused, grace period starts
+
+    Note over Admin, Core: Step 2 — Withdraw all from adapter
+    Admin->>Core: triggerEmergency(vaultId, Withdraw, data)
+    Core->>EM: execute(vaultId, Withdraw, data)
+    EM->>Vault: emergencyWithdrawFromAdapter()
+    Vault->>Adapter: emergencyWithdraw()
+    Adapter-->>Vault: all assets returned
+
+    Note over User, Vault: Grace period (24 h) — normal redemption still works
+    User->>Vault: redeem(shares, receiver, owner)
+
+    Note over Admin, Core: Step 3a — Resume to normal
+    Admin->>Core: triggerEmergency(vaultId, Resume, "")
+    Core->>EM: execute(vaultId, Resume, "")
+    EM->>Vault: resumeFromEmergency()
+
+    Note over Admin, Vault: Step 3b — After grace expires
+    Admin->>Vault: emergencyWithdrawUser(shares, receiver, owner)
+```
+
+Source: `src/modules/EmergencyModule.sol`, `src/core/GiveProtocolCore.sol`
+
+---
+
+### Layer 3 — Yield Adapters
 
 | Contract                | Kind                 | Protocol                                                   |
 | ----------------------- | -------------------- | ---------------------------------------------------------- |
@@ -108,7 +660,44 @@ graph TD
 | `ClaimableYieldAdapter` | `ClaimableYield`     | Manual yield claiming (liquidity mining)                   |
 | `ManualManageAdapter`   | `Manual`             | Operator-controlled off-chain positions                    |
 
-### Module Libraries
+| Kind                 | How Yield Works                            | `harvest()` behaviour                  | Example Protocols               |
+| -------------------- | ------------------------------------------ | -------------------------------------- | ------------------------------- |
+| `CompoundingValue`   | Balance constant, exchange rate rises      | Returns unrealised gain                | wstETH, sUSDe, Compound cTokens |
+| `BalanceGrowth`      | Token balance grows over time              | Returns balance delta                  | Aave aTokens                    |
+| `FixedMaturityToken` | PT tokens mature at face value             | Always returns `(0, 0)` until maturity | Pendle PT                       |
+| `ClaimableYield`     | Yield queued externally, claimed manually  | Triggers external claim                | Liquidity mining rewards        |
+| `Manual`             | Off-chain management, on-chain attestation | Operator-reported                      | Structured products             |
+
+> **PT vault note:** Pendle PT adapters return `(0, 0)` from `harvest()` for their entire lifetime. Yield is embedded in the PT discount and realised only at maturity. Early redemption is blocked by AMM spread (~6.4%) exceeding `maxLossBps`. See `CLAUDE.md` for the proposed maturity-lock fix.
+
+```mermaid
+sequenceDiagram
+    participant Vault as GiveVault4626
+    participant Adapter as AdapterBase
+    participant Protocol as External Protocol
+
+    Note over Vault, Adapter: Deposit path
+    Vault->>Adapter: invest(amount)
+    Adapter->>Protocol: deposit/supply(amount)
+    Protocol-->>Adapter: receipt tokens (aToken / PT / etc)
+
+    Note over Vault, Adapter: Withdrawal path
+    Vault->>Adapter: divest(amount)
+    Adapter->>Protocol: withdraw/redeem(amount)
+    Protocol-->>Adapter: underlying asset
+    Adapter-->>Vault: underlying asset
+
+    Note over Vault, Adapter: Yield collection
+    Vault->>Adapter: harvest()
+    Adapter->>Protocol: claim rewards / compute accrual
+    Adapter-->>Vault: (profit, loss)
+```
+
+Source: `src/adapters/`
+
+---
+
+## Module Libraries
 
 Six stateless library modules delegate from `GiveProtocolCore`. All state is written through `StorageLib` into diamond storage.
 
@@ -136,40 +725,13 @@ StorageLib.adapter(adapterId)        // returns AdapterConfig storage ref
 StorageLib.ensureVaultActive(id)     // accessor + validation in one call
 ```
 
-### Module Delegation
+### Pull-Based Yield Accumulator
 
-`GiveProtocolCore` is a thin router that delegates to pure library functions. Modules carry no state.
+Yield is never pushed to all recipients in a loop. The accumulator advances once per `recordYield` call; each user's pending amount is computed in O(1) at claim time.
 
-```mermaid
-graph LR
-    Core[GiveProtocolCore] -->|delegatecall logic| VM[VaultModule]
-    Core --> AM[AdapterModule]
-    Core --> DM[DonationModule]
-    Core --> RM[RiskModule]
-    Core --> EM[EmergencyModule]
-    VM --> DS[(Diamond Storage)]
-    AM --> DS
-    DM --> DS
-    RM --> DS
-    EM --> DS
 ```
-
-### Pull-Based PayoutRouter
-
-Yield is never pushed to all recipients in a loop. The vault records harvested yield in `PayoutRouter`, and each campaign/NGO claims their share independently.
-
-```mermaid
-sequenceDiagram
-    participant Bot
-    participant Vault as CampaignVault4626
-    participant PR as PayoutRouter
-    participant NGO
-
-    Bot->>Vault: harvest()
-    Vault->>PR: recordYield(amount)
-    PR->>PR: accumulate per-campaign balance
-    NGO->>PR: claimYield(campaignId)
-    PR->>NGO: transfer claimable yield
+accumulatedYieldPerShare += totalYield / totalShares   // on recordYield
+claimable = (accumulatedYieldPerShare - userDebt) * userShares  // on claimYield
 ```
 
 ### Adapter Binding
@@ -190,54 +752,6 @@ abstract contract AdapterBase {
 
 ---
 
-## Campaign Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> Submitted: submitCampaign() + 0.005 ETH deposit
-    Submitted --> Active: approveCampaign()
-    Submitted --> Rejected: rejectCampaign() (deposit slashed)
-    Active --> Successful: target stake reached
-    Active --> Failed: deadline passed, min stake not met
-    Active --> Checkpoints: milestones scheduled
-    Checkpoints --> Active: checkpoint passed
-    Checkpoints --> Paused: checkpoint failed (payouts halted)
-    Paused --> Active: checkpoint resolved
-    Successful --> Completed: finalPayout()
-    Failed --> [*]: supporters withdraw principal
-    Completed --> [*]
-```
-
-### Checkpoint Governance
-
-```mermaid
-stateDiagram-v2
-    [*] --> Scheduled: scheduleCheckpoint()
-    Scheduled --> Voting: voting window opens
-    Voting --> Succeeded: quorum met, majority yes
-    Voting --> Failed: quorum not met or majority no
-    Succeeded --> Executed: executeCheckpoint()
-    Failed --> Paused: halt payouts
-    Paused --> Resolved: council resolves
-    Resolved --> [*]
-```
-
-Supporters vote proportional to their staked share. Required quorum is configurable per campaign.
-
----
-
-## Adapter Kinds
-
-| Kind                 | How Yield Works                            | Example Protocols               |
-| -------------------- | ------------------------------------------ | ------------------------------- |
-| `CompoundingValue`   | Balance constant, exchange rate rises      | wstETH, sUSDe, Compound cTokens |
-| `BalanceGrowth`      | Token balance grows over time              | Aave aTokens                    |
-| `FixedMaturityToken` | PT tokens mature at face value             | Pendle PT                       |
-| `ClaimableYield`     | Yield queued externally, claimed manually  | Liquidity mining rewards        |
-| `Manual`             | Off-chain management, on-chain attestation | Structured products             |
-
----
-
 ## Role System
 
 All access control flows through `ACLManager`. No standalone `Ownable`.
@@ -254,26 +768,6 @@ VAULT_MANAGER_ROLE        Configure vault adapters and settings
 ```
 
 Two-step admin transfer prevents accidental privilege loss.
-
----
-
-## Emergency Controls
-
-```mermaid
-sequenceDiagram
-    participant Admin
-    participant Vault as GiveVault4626
-    participant Adapter
-
-    Admin->>Vault: emergencyPause()
-    Vault->>Adapter: emergencyWithdraw() (all assets recovered)
-    Vault->>Vault: start 24h grace period
-    Note over Vault: Normal withdrawals still work during grace
-    Admin->>Vault: resumeFromEmergency()
-    Vault->>Vault: return to normal operations
-    Note over Vault: OR after grace expires...
-    Vault Owner->>Vault: emergencyWithdrawUser()
-```
 
 ---
 
@@ -313,7 +807,7 @@ test/
 ├── base/             Base01–Base03 (3-phase deployment fixtures)
 ├── unit/             TestContract01–21 (21 unit test suites)
 ├── integration/      TestAction01–02 (end-to-end workflows)
-├── fork/             ForkTest01–09 (9 live protocol tests)
+├── fork/             ForkTest01–11 (11 live protocol tests)
 ├── fuzz/             FuzzTest01–04 (property-based tests)
 └── invariant/        InvariantTest01–03 + 3 handlers
 
@@ -400,18 +894,61 @@ forge test --match-test test_Case01_deploymentState -v
 > `--ir-minimum` is permanently required. OZ's `__ERC20_init` uses inline assembly
 > that hits the 16-slot stack limit when `optimizer=false, via_ir=false`.
 
-### Coverage Targets
+### Coverage Report (Auditor View)
 
-| Contract      | Lines  | Statements | Branches   | Functions |
-| ------------- | ------ | ---------- | ---------- | --------- |
-| Overall       | 60.43% | 61.00%     | **49.23%** | 62.62%    |
-| PayoutRouter  | 88.72% | 88.85%     | **87.80%** | 88.10%    |
-| GiveVault4626 | 78.79% | 81.07%     | **83.05%** | 71.70%    |
+Latest coverage run (provided from `make coverage-summary`):
+
+- Test execution: **438 passed, 0 failed, 0 skipped**
+- Global coverage table (includes `script/`, `test/`, and `src/`):
+  - **Lines:** 63.35% (2538/4006)
+  - **Statements:** 63.36% (2674/4220)
+  - **Branches:** 43.81% (283/646)
+  - **Functions:** 66.25% (428/646)
+
+For audit interpretation, prioritize **production contracts (`src/`)** and branch depth on
+funds-moving paths over the global percentage.
+
+| Audit-critical contract             | Lines  | Statements | Branches | Functions |
+| ----------------------------------- | ------ | ---------- | -------- | --------- |
+| `src/vault/GiveVault4626.sol`       | 87.88% | 88.76%     | 77.97%   | 81.13%    |
+| `src/payout/PayoutRouter.sol`       | 86.33% | 83.95%     | 65.12%   | 90.70%    |
+| `src/registry/CampaignRegistry.sol` | 86.97% | 83.75%     | 51.47%   | 86.21%    |
+| `src/manager/StrategyManager.sol`   | 77.97% | 76.56%     | 72.73%   | 77.27%    |
+| `src/adapters/AaveAdapter.sol`      | 57.80% | 60.94%     | 18.52%   | 44.44%    |
+
+Coverage floor context:
+
+- High branch: `ACLManager` 88.46%, `CampaignVaultFactory` 92.31%, `StorageLib` 100%
+- Lower branch pockets are expected in fork-gated or protocol-specific paths (`AaveAdapter`, PT/fixed-maturity branches)
+
+**Reproducible commands (Makefile):**
+
+```bash
+# Summary table (auditor-facing quick check)
+make coverage-summary
+
+# LCOV artifact for CI/tooling
+make coverage
+
+# Full-spectrum LCOV (includes fork/fuzz/invariant)
+make coverage-full
+```
+
+**Methodology notes:**
+
+- `--ir-minimum` is required for stable coverage compilation with OZ initializers.
+- Auditor focus should prioritize `src/` contract metrics and branch coverage on value-flow contracts.
+- Fork/fuzz/invariant suites are still separate security validation layers, not denominator contributors to this table.
+
+**Evidence artifacts:**
+
+- `coverage-report.md` (human-readable summary)
+- `lcov.info` (machine-readable coverage output from `make coverage`)
 
 ### Test Count
 
-- **Unit + Integration (default run):** 428+ tests, 0 failed, 0 skipped
-- **Fork:** 11 suites (AaveAdapter, Pendle yoUSD/yoETH + maturity, checkpoint voting, multi-vault, campaign lifecycle, depositETH, fork sanity, and critical-path upgrade fork checks via `ForkTest11_UpgradeCriticalPaths`)
+- **Unit + Integration (default run):** 438 tests, 0 failed, 0 skipped
+- **Fork:** 11 suites (AaveAdapter, Pendle yoUSD/yoETH + maturity, checkpoint voting, multi-vault, campaign lifecycle, depositETH, fork sanity, critical-path upgrade checks)
 - **Fuzz:** 4 suites (10,000 runs each)
 - **Invariant:** 3 suites (256 runs, depth 500)
 
@@ -426,17 +963,6 @@ make vitest
 # Override target network/RPC
 make frontend-e2e RPC_URL=... DEPLOYMENT_NETWORK=anvil
 ```
-
-**Test actions:**
-
-| File           | Scope                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| `TestAction00` | Environment initialization, role grants, campaign submission + approval, vault deployment |
-| `TestAction01` | USDC approval, deposit, time travel (30 days), yield harvest, preference config           |
-| `TestAction02` | Payout execution, share redemption, principal return, invariant assertions                |
-| `TestAction03` | Unauthorized access rejections, revert selector validation                                |
-
-**Current status: 56/56 passing on BuildBear (strict runtime).**
 
 ---
 
@@ -598,31 +1124,6 @@ ALLOW_DEFAULT_BROADCAST  false (require explicit signer)
 AUTO_REBALANCE_ENABLED   true
 REBALANCE_INTERVAL       86400 (1 day in seconds)
 ```
-
----
-
-## Mandatory Deployment Gates
-
-Before mainnet deployment, all of the following must pass:
-
-1. `forge test -v` — zero failures
-2. PayoutRouter pull accumulator model is active (no push loops)
-3. Slither + Semgrep triaged with no unaccepted High findings
-4. Fuzz and invariant suites exist and pass
-5. Fork suites pass for live Base mainnet assumptions
-6. Frontend E2E strict suite: 56/56 passing on target network
-
----
-
-## Stack
-
-- **Solidity** `0.8.34`, EVM target: `prague`
-- **Foundry** — build, test, deploy, coverage
-- **OpenZeppelin v5** — UUPS, ERC-4626, AccessControl
-- **UUPS proxies** — all core and vault contracts
-- **Diamond Storage** — collision-safe upgradeable state
-- **Viem v2 + Vitest v4** — frontend E2E and smoke tests
-- **Target mainnet:** Base
 
 ---
 
